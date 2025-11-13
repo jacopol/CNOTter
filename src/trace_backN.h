@@ -45,11 +45,11 @@ trace permute_trace(const perm pi, const trace &tr) {
     return result;
 }
 
-trace trace_back_middle(Matrix &id, Matrix &middle, Matrix &goal, hashset bfs_fwd[], hashset bfs_bwd[], int fdepth, int bdepth, perm pi) {
+trace trace_back_middle(Matrix &id, Matrix &x, Matrix &y, Matrix &goal, hashset bfs_fwd[], hashset bfs_bwd[], int fdepth, int bdepth, perm pi) {
     trace fwd_trace, bwd_trace, result;
     Matrix id_found, goal_found;
-    id_found = trace_back(middle, bfs_fwd, fdepth, fwd_trace);
-    goal_found = trace_back(middle, bfs_bwd, bdepth, bwd_trace);
+    id_found = trace_back(x, bfs_fwd, fdepth, fwd_trace);
+    goal_found = trace_back(y, bfs_bwd, bdepth, bwd_trace);
 
     // REVERSE the forward trace and concatenate backward trace
     std::reverse(fwd_trace.begin(),fwd_trace.end());

@@ -57,17 +57,17 @@ public:
 public:
 
     Matrix(bool diag=1) { // create identity matrix
-        for (uint8_t i=0; i<N; i++)
+        for (byte i=0; i<N; i++)
             set(i,i,diag);
     }
 
-    inline bool get(uint8_t i, uint8_t j) const {
+    inline bool get(byte i, byte j) const {
         div_t wordi = div(i,NC);
         uint64_t res = _bits[wordi.quot] & (1UL << (N * wordi.rem + j));
         return (res ? true : false);
     }
 
-    inline void set(uint8_t i, uint8_t j, bool val) {
+    inline void set(byte i, byte j, bool val) {
         div_t wordi = div(i,NC);
         uint64_t mask = (1UL << (N * wordi.rem + j));
         if (val)
@@ -77,14 +77,14 @@ public:
     }
 
     bool operator==(const Matrix &other) const { // assume unused bits are 0
-        for (uint8_t i=NR-1; i<NR; i--) {
+        for (byte i=NR-1; i<NR; i--) {
             if (_bits[i] != other._bits[i]) return false;
         }
         return true;
     }
     
     bool operator<(const Matrix &other) const { // assume unused bits are 0
-        for (uint8_t i=NR-1; i<NR; i--) {
+        for (byte i=NR-1; i<NR; i--) {
             if (_bits[i] < other._bits[i]) return true;
             if (_bits[i] > other._bits[i]) return false;
         }
@@ -95,8 +95,8 @@ public:
     void print() const {
         std::string delimiter(N*2-1,'=');
         std::cout << delimiter << std::endl;
-            for (uint8_t i=0; i<N; i++) {
-                for (uint8_t j=0; j<N; j++)
+            for (byte i=0; i<N; i++) {
+                for (byte j=0; j<N; j++)
                     printf("%c ", (get(i,j) ? '1' : '0'));
                 printf("\n");   
             }
@@ -126,7 +126,7 @@ public:
     }
 
     /* Add row i to row j*/
-    Matrix addrow(uint8_t i, uint8_t j) const {
+    Matrix addrow(byte i, byte j) const {
         assert(i!=j && i<N && j<N);
         Matrix result=*this;
         div_t wordi = div(i,NC);
@@ -137,26 +137,37 @@ public:
         return result;
     };
 
-    Matrix permute(const uint8_t pi[N]) const { // other[i][j] := this[pi[i]][pi[j]]
+    Matrix permute(const byte pi[N]) const { // other[i][j] := this[pi[i]][pi[j]]
         Matrix other;
-        for (uint8_t i=0; i<N; i++) {
-            for (uint8_t j=0; j<N; j++) {
+        for (byte i=0; i<N; i++) {
+            for (byte j=0; j<N; j++) {
                 other.set(i,j, get(pi[i],pi[j]));
             }
         }
         return other;
     }
 
-    Matrix permute2(const uint8_t pi1[N], const uint8_t pi2[N]) const { // other[i][j] := this[pi1[i]][pi2[j]]
+    Matrix permute2(const byte pi1[N], const byte pi2[N]) const { // other[i][j] := this[pi1[i]][pi2[j]]
         Matrix other;
-        for (uint8_t i=0; i<N; i++) {
-            for (uint8_t j=0; j<N; j++) {
+        for (byte i=0; i<N; i++) {
+            for (byte j=0; j<N; j++) {
                 other.set(i,j, get(pi1[i],pi2[j]));
             }
         }
         return other;
     }
 
+    static Matrix multiply(const Matrix &a, const Matrix &b) {
+        Matrix result(false); // zero matrix
+        for (byte i=0; i<N; i++)
+            for (byte j=0; j<N; j++) {
+                bool val = false;
+                for (byte k=0; k<N; k++)
+                    val ^= (a.get(i,k) & b.get(k,j));
+                result.set(i,j,val);
+            }
+        return result;
+    }
 };
 
 #if POLY==1 && GOAL==0

@@ -70,8 +70,6 @@ std::array<std::array<std::atomic<counter>,N+1>,N/2+1> poly; // coefficients of 
 #endif
 
 rootset bfs_levels[3*N];    // for one-directional BFS
-rootset bfs_fwd[(3*N+2)/2]; // for bi-directional BFS
-rootset bfs_bwd[(3*N+1)/2];
 
 void Add(const Matrix &x, byte i, byte j, 
                 rootset *prev, rootset *current, rootset *next, int depth,
@@ -139,7 +137,45 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     return level;
 }
 
-int generate_bfs(Matrix start, Matrix goal, byte limit, hashset bfs_levels[]) {
+// Bidirectional search yields a matrix in the intersection of Fwd(start) and Bwd(goal)
+// We also return the depths of the fwd and bwd search (fdepth,bdepth)
+// We return (0,fdepth,bdepth) if start and goal are not connected
+
+using triple = std::pair<std::pair<Matrix,Matrix>,std::pair<byte,byte>>;
+inline triple Triple(const Matrix &x, const Matrix &y, byte d1, byte d2) {
+    return std::pair<std::pair<Matrix,Matrix>,std::pair<byte,byte>>
+                (std::pair<Matrix,Matrix>(x,y), 
+                 std::pair<byte,byte>(d1, d2));
+}
+
+triple check_backwards(const Matrix &goal, byte depth) {
+    std::atomic<Matrix> X(false), Y(false);
+    std::atomic<int> fwd(-1);
+    bfs_levels[depth].parallelForAll([&](mat_idx idx){
+        // TODO: How to terminate when found?
+        Matrix x = GET(idx);
+        Matrix y = Matrix::multiply(goal,x);
+        representative(y);
+        x.print();
+        y.print();
+        printf("----\n");
+        // y = goal.x
+        // goal = y.x^{-1}
+        if (CONTAINS(y, bfs_levels[depth-1])) {
+            X = x;
+            Y = y;
+            fwd = depth-1;
+        }
+        else if (CONTAINS(y, bfs_levels[depth])) {
+            X = x;
+            Y = y;
+            fwd = depth;
+        }
+    });
+    return Triple(X, Y, depth, fwd.load());
+}
+
+triple generate_bfs(Matrix start, Matrix goal, byte limit, hashset bfs_levels[]) {
 
     // initialize Breadth-First Search
     byte depth = 1, tableSize = 3;
@@ -149,13 +185,19 @@ int generate_bfs(Matrix start, Matrix goal, byte limit, hashset bfs_levels[]) {
     printf("Depth 0 (2^3): "); fflush(stdout);
     levels = level = init_level(bfs_levels, start);
 
+    if (!(goal==Matrix(false))) {
+        if (find_level(goal, bfs_levels[depth])) 
+            return Triple(start, goal, depth, 0);
+    }
+
     while (orbit) {
         report(level, orbit);
-        if (!(goal==Matrix(false))) // TODO: define neq
-            { if (find_level(goal, bfs_levels[depth])) return -depth; }
-        else 
-            { if (depth > 1) bfs_levels[depth-2].deinit(); }
-        if (depth-1 == limit) return depth;
+        if (!(goal==Matrix(false))) { // TODO: define neq
+            triple t = check_backwards(goal, depth);
+            if (!(t.first.first==Matrix(false))) return t;
+        }
+        else if (depth > 1) bfs_levels[depth-2].deinit();
+        if (depth-1 == limit) return Triple(0, 0, depth, 0); // not found
         depth++;
         tableSize = predictSize(depth);
         bfs_levels[depth] = hashset();
@@ -172,7 +214,7 @@ int generate_bfs(Matrix start, Matrix goal, byte limit, hashset bfs_levels[]) {
     );
 */
     printf("Total size: %lu (%lu orbits), completed at depth %u\n", levels, orbits, depth-1);
-    return depth;
+    return Triple(0,0,depth,0);
 }
 
 mat_idx intersect(hashset &L1, hashset &L2) {
@@ -181,59 +223,6 @@ mat_idx intersect(hashset &L1, hashset &L2) {
         if (L2.contains(x)) joint=x; // How to terminate when found?
     });
     return joint;
-}
-
-// Bidirectional search yields a matrix in the intersection of Fwd(start) and Bwd(goal)
-// We also return the depths of the fwd and bwd search (fdepth,bdepth)
-// We return (0,fdepth,bdepth) if start and goal are not connected
-
-using triple = std::pair<mat_idx,std::pair<byte,byte>>;
-inline triple Triple(mat_idx m, byte d1, byte d2) {
-    return std::pair<mat_idx,std::pair<byte,byte>>(m, std::pair<byte,byte>(d1, d2));
-}
-
-triple bidirectional(Matrix start, Matrix goal, byte limit, hashset bfs_fwd[], hashset bfs_bwd[]) {
-
-    // initialize Bidirectional fwd/bwd Search
-    byte fdepth = 1, bdepth=1, tableSize;
-    counter level, forbit, borbit, levels, orbits;
-    forbit = borbit = 1; orbits = 2;
-    levels = level = init_level(bfs_fwd, start);
-    printf("Fwd Depth 0 (2^3): "); report(level, forbit);
-    levels += level = init_level(bfs_bwd, goal);
-    printf("Bwd Depth 0 (2^3): "); report(level, borbit);
-    mat_idx m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
-    if (m) return Triple(m, fdepth, bdepth);
-
-    while (fdepth + bdepth - 2 < 3*(N-1)) { // expand the smallest level
-        if (fdepth+bdepth-2 == limit) return Triple(m, fdepth, bdepth);
-        if (forbit <= borbit) {
-            fdepth++; 
-            tableSize = predictSize(fdepth);
-            printf("Fwd Depth %u (2^%u): ", fdepth-1, tableSize); fflush(stdout);
-            bfs_fwd[fdepth] = hashset();
-            bfs_fwd[fdepth].init(tableSize);
-            levels += level = next_level(forbit, bfs_fwd, fdepth);
-            orbits += forbit;
-            report(level, forbit);
-        }
-        else {
-            bdepth++;
-            // Note: this Bwd level is smaller than next Fwd one
-            // Problem: Bwd's successor can still be larger than Fwd's successor (hence 10)
-            tableSize = predictSize(fdepth+1); 
-            printf("Bwd Depth %u (2^%u): ", bdepth-1, tableSize); fflush(stdout);
-            bfs_bwd[bdepth] = hashset();
-            bfs_bwd[bdepth].init(tableSize);
-            levels += level = next_level(borbit, bfs_bwd, bdepth);
-            orbits += borbit;
-            report(level, borbit);
-        }
-        m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
-        if (m) return Triple(m, fdepth, bdepth);
-    }
-    printf("Not found at distance %u+%u (%lu, %lu)\n", fdepth-1, bdepth-1, levels, orbits);
-    return Triple(0, fdepth, bdepth);
 }
 
 /*
@@ -274,39 +263,22 @@ int main(int argc, char const *argv[]) {
         goal = Matrix::read(argv[argc-1]);
         //investigate(goal);
     }
+    triple m = generate_bfs(id, goal, limit, bfs_levels);
     if (!(goal==Matrix(false))) {
-        triple m = bidirectional(id, goal, limit, bfs_fwd, bfs_bwd);
-        mat_idx middle = m.first;
+        Matrix X = m.first.first;
+        Matrix Y = m.first.second;
         int fdepth = m.second.first;
         int bdepth = m.second.second;
-        if (m.first) {
+        if (!(X == Matrix(false))) {
             printf("Found at distance %u (%u + %u)\n", fdepth + bdepth - 2, fdepth-1, bdepth-1);
             perm pi;
-            Matrix Middle = GET(middle);
-            trace concat = trace_back_middle(id, Middle, goal, bfs_fwd, bfs_bwd, fdepth, bdepth, pi);
+            trace concat = trace_back_middle(id, X, Y, goal, bfs_levels, bfs_levels, fdepth, bdepth, pi);
             print_trace(id, goal, concat, pi);
         } else {
-            printf("Goal not found after %d steps: \n", fdepth+bdepth-2);
+            printf("Goal not reachable in %d steps: \n", fdepth+bdepth-2);
             goal.print();
         }
-    } else {
-        int depth = generate_bfs(id, goal, limit, bfs_levels); 
-        if (!(goal==Matrix(0))) { // currently unreachable, since bidirectional is preferred
-            if (depth < 0) { // negative means goal is found 
-                depth = -depth;
-                printf("Goal found at level %d\n", depth-1);
-                trace bfs_trace;
-                Matrix other = trace_back(goal, bfs_levels, depth, bfs_trace);
-                assert(other==id);
-                std::reverse(bfs_trace.begin(), bfs_trace.end());
-                perm pi; id_perm(pi);
-                print_trace(other, goal, bfs_trace, pi);
-            }
-            else { // currently unreachable
-                printf("Goal not found after %d steps: \n", depth-1);
-                goal.print();
-            }
-        }
+    }
 #if POLY==1
         printf("Polynomial coefficients (N=%u):\n", N);
         for (int d=1; d<=std::min(N/2,depth-1); d++) {
@@ -316,7 +288,7 @@ int main(int argc, char const *argv[]) {
             printf("\n");
         }
 #endif
-    }
+
     std::cout << std::setprecision(std::numeric_limits<double>::digits10)
               << "Total time: " << currentTime() << "s" << std::endl;
 }

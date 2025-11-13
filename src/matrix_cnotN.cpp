@@ -9,6 +9,7 @@
 #include <array>
 #include <vector>
 #include <omp.h>
+#include <algorithm> // for permutations
 #include "options.h" // defines N,E,MAX,SWAP,NAUTY,POLY,BEAT, see also matrix_cnot.sh
 #include "timing.h"
 #include "matrixN.h"
@@ -76,9 +77,14 @@ void Add(const Matrix &x, byte i, byte j,
                 counter &level, counter &count) {
     Matrix y = x.addrow(i,j);
     counter Stab = representative(y);
+    Matrix y2 = y.inverse().transpose();
+    counter Stab2 = representative(y2);
+    if (y == y2) Stab2=0; 
+    if (y2 < y) y=y2;  
     if (!CONTAINS(y,*prev) && !CONTAINS(y,*current) && INSERT(y,*next)) {
         // only insert and count if new; 
         level += Orbit(Stab);
+        if (Stab2>0) level+= Orbit(Stab2);
         count++;
 #if POLY==1
         if (2*(depth-1)<=N) {
@@ -154,23 +160,26 @@ triple check_backwards(const Matrix &goal, byte depth) {
     bfs_levels[depth].parallelForAll([&](mat_idx idx){
         // TODO: How to terminate when found?
         Matrix x = GET(idx);
-        Matrix y = Matrix::multiply(goal,x);
-        representative(y);
-        x.print();
-        y.print();
-        printf("----\n");
-        // y = goal.x
-        // goal = y.x^{-1}
-        if (CONTAINS(y, bfs_levels[depth-1])) {
-            X = x;
-            Y = y;
-            fwd = depth-1;
-        }
-        else if (CONTAINS(y, bfs_levels[depth])) {
-            X = x;
-            Y = y;
-            fwd = depth;
-        }
+        perm pi; id_perm(pi);
+        do {
+            Matrix z = x.permute(pi);
+            Matrix y = goal.multiply(z);
+            representative(y);
+            // y = goal.z
+            // goal = y.z^{-1}
+            if (CONTAINS(y, bfs_levels[depth-1])) {
+                X = x;
+                Y = y;
+                fwd = depth-1;
+                break;
+            }
+            else if (CONTAINS(y, bfs_levels[depth])) {
+                X = x;
+                Y = y;
+                fwd = depth;
+                break;
+            }
+        } while (std::next_permutation(pi,pi+N));
     });
     return Triple(X, Y, depth, fwd.load());
 }
@@ -261,7 +270,18 @@ int main(int argc, char const *argv[]) {
     }
     if (argc>1 && argv[argc-1][0]!='-') {
         goal = Matrix::read(argv[argc-1]);
-        //investigate(goal);
+        if (true) {
+            // testing inverse:
+            goal.print();
+            Matrix goal1 = goal.inverse();
+            goal1.print();
+            goal1 = goal.multiply(goal1);
+            goal1.print();
+            goal1 = goal1.transpose();
+            goal1.print();
+            exit(-1);
+            //investigate(goal);
+        }
     }
     triple m = generate_bfs(id, goal, limit, bfs_levels);
     if (!(goal==Matrix(false))) {

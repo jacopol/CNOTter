@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <array>
+#include <vector>
 
 #define NC (64 / N)        // Columns: number of rows in a single word.
 #define NR ((N-1) / NC +1) // Rows: number of words needed (last word may not be filled)
@@ -157,16 +158,56 @@ public:
         return other;
     }
 
-    static Matrix multiply(const Matrix &a, const Matrix &b) {
+    Matrix multiply(const Matrix &other) const {
         Matrix result(false); // zero matrix
         for (byte i=0; i<N; i++)
             for (byte j=0; j<N; j++) {
                 bool val = false;
                 for (byte k=0; k<N; k++)
-                    val ^= (a.get(i,k) & b.get(k,j));
+                    val ^= (get(i,k) & other.get(k,j));
                 result.set(i,j,val);
             }
         return result;
+    }
+
+    Matrix transpose() const {
+        Matrix r(false);
+        for (int i=0; i<N; i++)
+            for (int j=0; j<N; j++)
+                r.set(i,j,get(j,i));
+        return r;
+    }
+
+    Matrix inverse() const {
+        // we assume from the start that a is invertible
+        std::vector<std::pair<byte,byte>> path;
+        Matrix r=*this;
+        for (byte j=0; j<N; j++) {
+            if (!r.get(j,j))
+                for (byte i=j+1; i<N; i++)
+                    if (r.get(i,j)) {
+                        path.push_back(std::pair<byte,byte>(i,j));
+                        r=r.addrow(i,j);
+                        break;
+                    }
+            // now r.get(j,j) should hold
+            for (byte i=j+1; i<N; i++)
+                if (r.get(i,j)) {
+                    path.push_back(std::pair<byte,byte>(j,i));
+                    r=r.addrow(j,i);
+                }
+        // lower diagonal should be zero
+        for (byte j=N-1; j<N; j--)
+            for (byte i=0; i<j; i++)
+                if (r.get(i,j)) {
+                    path.push_back(std::pair<byte,byte>(j,i));
+                    r=r.addrow(j,i);
+                }
+        }
+        // now r should be the identity
+        for (auto &x : path)
+            r = r.addrow(x.first, x.second);
+        return r;
     }
 };
 

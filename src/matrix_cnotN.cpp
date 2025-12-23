@@ -73,7 +73,7 @@ std::array<std::array<std::atomic<counter>,N+1>,N/2+1> poly; // coefficients of 
 rootset bfs_levels[3*N];    // for one-directional BFS
 
 void Add(const Matrix &x, byte i, byte j, 
-                rootset *prev, rootset *current, rootset *next, int depth,
+                rootset levels[], int depth,
                 counter &level, counter &count) {
     Matrix y = x.addrow(i,j);
     counter Stab = representative(y);
@@ -81,7 +81,7 @@ void Add(const Matrix &x, byte i, byte j,
     counter Stab2 = representative(y2);
     if (y == y2) Stab2=0; 
     if (y2 < y) y=y2;  
-    if (!CONTAINS(y,*prev) && !CONTAINS(y,*current) && INSERT(y,*next)) {
+    if (!CONTAINS(y,levels[depth-2]) && !CONTAINS(y,levels[depth-1]) && INSERT(y,levels[depth])) {
         // only insert and count if new; 
         level += Orbit(Stab);
         if (Stab2>0) level+= Orbit(Stab2);
@@ -113,17 +113,13 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     // current and prev are accessed read-only
     // next is modified (extended) concurrently
 
-    auto prev = &levels[depth-2];
-    auto current = &levels[depth-1];
-    auto next = &levels[depth];
-
-    current->parallelForAll(
+    levels[depth-1].parallelForAll(
         [&](mat_idx r){
             Matrix x = GET(r);
             counter loc_level=0, loc_count=0;
             for (byte i=0; i<N; i++)
                 for (byte j=0; j<N; j++) // add to row j
-                    if (i != j) Add(x, i, j, prev, current, next, depth, loc_level, loc_count);
+                    if (i != j) Add(x, i, j, levels, depth, loc_level, loc_count);
         if (loc_level > 0) {
             level += loc_level;
             count += loc_count;

@@ -88,11 +88,11 @@ process_cnot(matrix x, byte j, uint64_t row,
         return false;
     
     // New canonical form found - update counters
-#if SWAP==0
-    orbit_sum += orbit_factor / Stab;
-#else
-    orbit_sum += (orbit_factor * orbit_factor) / Stab;
-#endif
+    if constexpr (SWAP == 0) {
+        orbit_sum += orbit_factor / Stab;
+    } else {
+        orbit_sum += (orbit_factor * orbit_factor) / Stab;
+    }
     matrix_count++;
     
     if constexpr (POLY == 1) {

@@ -47,9 +47,7 @@ const std::array<std::vector<byte>,9> levelSizes = {{
 }};
 #endif
 
-#if POLY==1
 std::array<std::array<std::atomic<counter>,N+1>,N/2+1> poly; // coefficients of the polynomial at distances up to N/2
-#endif
 
 hashset bfs_levels[3*N];    // for one-directional BFS
 hashset bfs_fwd[(3*N+2)/2]; // for bi-directional BFS
@@ -97,12 +95,12 @@ process_cnot(matrix x, byte j, uint64_t row,
 #endif
     matrix_count++;
     
-#if POLY==1
-    if (2*(depth-1) <= N) {
-        byte ess = countEssential(y);
-        poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+    if constexpr (POLY == 1) {
+        if (2*(depth-1) <= N) {
+            byte ess = countEssential(y);
+            poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+        }
     }
-#endif
     return true;
 }
 
@@ -336,15 +334,15 @@ int main(int argc, char const *argv[]) {
                 pretty_matrix(goal);
             }
         }
-#if POLY==1
-        fprintf(stderr,"Polynomial coefficients (N=%u):\n", N);
-        for (int d=1; d<=std::min(N/2,depth-1); d++) {
-            fprintf(stderr,"d=%u: [", d);
-            for (byte i=0; i<=2*d; i++)
-                fprintf(stderr,"%lu%c ", poly[d][i].load(std::memory_order_relaxed), (i<2*d ? ',' : ']'));
-            fprintf(stderr,"\n");
+        if constexpr (POLY == 1) {
+            fprintf(stderr,"Polynomial coefficients (N=%u):\n", N);
+            for (int d=1; d<=std::min(N/2,depth-1); d++) {
+                fprintf(stderr,"d=%u: [", d);
+                for (byte i=0; i<=2*d; i++)
+                    fprintf(stderr,"%lu%c ", poly[d][i].load(std::memory_order_relaxed), (i<2*d ? ',' : ']'));
+                fprintf(stderr,"\n");
+            }
         }
-#endif
     }
     std::cerr << std::setprecision(std::numeric_limits<double>::digits10)
               << "Total time: " << currentTime() << "s" << std::endl;

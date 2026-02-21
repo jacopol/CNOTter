@@ -98,8 +98,6 @@ matrix permute2(matrix x, const perm pi1, const perm pi2) {
     return y;
 }
 
-#if POLY==1 && GOAL==0
-
 #define get(x,i,j) (x & 1UL<<(N*i+j))
 
 #if SWAP==0
@@ -141,8 +139,6 @@ inline byte countEssential(matrix x) {
     }
     return N-ess;
 }
-
-#endif
 
 #endif
 

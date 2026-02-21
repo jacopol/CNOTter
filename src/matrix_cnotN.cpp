@@ -59,11 +59,14 @@ inline byte predictSize(int depth) {
     return std::min(std::max(lookup + E, 3), MAX); // add E and ensure result is in [3,MAX]
 }
 
+// Cache fac[N] to avoid repeated array lookups
+const counter fac_N = fac[N];
+
 inline counter Orbit(counter stab) {
     if constexpr (SWAP == 0) {
-        return fac[N] / stab;
+        return fac_N / stab;
     } else {
-        return fac[N] * (fac[N] / stab); // Note: stab divides fac[N]
+        return fac_N * (fac_N / stab); // Note: stab divides fac_N
     }
 }
 
@@ -75,7 +78,7 @@ rootset bfs_bwd[(3*N+1)/2];
 
 void Add(const Matrix &x, byte i, byte j, 
                 rootset *prev, rootset *current, rootset *next, int depth,
-                counter &level, counter &count) {
+                counter &level, counter &count, bool compute_poly) {
     Matrix y = x.addrow(i,j);
     counter Stab = representative(y);
     if (!CONTAINS(y,*prev) && !CONTAINS(y,*current) && INSERT(y,*next)) {
@@ -83,7 +86,7 @@ void Add(const Matrix &x, byte i, byte j,
         level += Orbit(Stab);
         count++;
         if constexpr (POLY == 1) {
-            if (2*(depth-1)<=N) {
+            if (compute_poly) {
                 byte ess = countEssential(y);
                 poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
             }
@@ -121,6 +124,9 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     auto prev = &levels[depth-2];
     auto current = &levels[depth-1];
     auto next = &levels[depth];
+    
+    // Hoist loop-invariant computation
+    const bool compute_poly = (POLY == 1) && (2*(depth-1) <= N);
 
     current->parallelForAll(
         [&](mat_idx r){
@@ -128,9 +134,13 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             int tid = omp_get_thread_num();
             counter &loc_level = thread_levels[tid].value;
             counter &loc_count = thread_counts[tid].value;
-            for (byte i=0; i<N; i++)
-                for (byte j=0; j<N; j++) // add to row j
-                    if (i != j) Add(x, i, j, prev, current, next, depth, loc_level, loc_count);
+            // Optimize loop to avoid repeated i != j checks
+            for (byte i=0; i<N; i++) {
+                for (byte j=0; j<i; j++)
+                    Add(x, i, j, prev, current, next, depth, loc_level, loc_count, compute_poly);
+                for (byte j=i+1; j<N; j++)
+                    Add(x, i, j, prev, current, next, depth, loc_level, loc_count, compute_poly);
+            }
 #if BEAT>0
         size_t worker = omp_get_thread_num();
         if (passedTime(lifeTime[worker]) >= BEAT) { // every minute

@@ -251,6 +251,100 @@ triple bidirectional(Matrix start, Matrix goal, byte limit, hashset bfs_fwd[], h
     return Triple(0, fdepth, bdepth);
 }
 
+// Program configuration parsed from command line
+struct ProgramOptions {
+    byte limit;
+    Matrix goal;
+};
+
+// Parse command line arguments
+ProgramOptions parse_arguments(int argc, char const *argv[]) {
+    ProgramOptions opts;
+    opts.limit = (byte)-1;  // -1 (255) means no limit
+    opts.goal = Matrix(0);  // 0 matrix means no specific goal
+    
+    // Check for limit argument "-K"
+    if (argc > 1 && argv[1][0] == '-') {
+        opts.limit = atoi(argv[1] + 1);
+        if (opts.limit != (byte)-1) {
+            fprintf(stderr, "Cutting off at maximum distance: %d\n", opts.limit);
+        }
+    }
+    
+    // Check for goal matrix argument (last argument not starting with '-')
+    if (argc > 1 && argv[argc-1][0] != '-') {
+        opts.goal = Matrix::read(argv[argc-1]);
+    }
+    
+    return opts;
+}
+
+// Print program configuration
+void print_configuration() {
+    fprintf(stderr, "Handling matrices of size N = %u\n", N);
+    fprintf(stderr, "Using DTree + %u extra bits, max-size %u\n", E, MAX);
+    fprintf(stderr, "Use Nauty: %u. Swaps-for-free: %u. Polynomial: %u\n", NAUTY, SWAP, POLY);
+#if defined(_OPENMP)
+    fprintf(stderr, "Running with %d OpenMP threads\n", omp_get_max_threads());
+#endif
+}
+
+// Run bidirectional search and print results
+void run_bidirectional_search(Matrix id, Matrix goal, byte limit) {
+    triple m = bidirectional(id, goal, limit, bfs_fwd, bfs_bwd);
+    mat_idx middle = m.first;
+    int fdepth = m.second.first;
+    int bdepth = m.second.second;
+    
+    if (m.first) {
+        fprintf(stderr, "Found at distance %u (%u + %u)\n", 
+                fdepth + bdepth - 2, fdepth - 1, bdepth - 1);
+        perm pi;
+        Matrix Middle = GET(middle);
+        trace concat = trace_back_middle(id, Middle, goal, bfs_fwd, bfs_bwd, 
+                                        fdepth, bdepth, pi);
+        print_trace(id, goal, concat, pi);
+    } else {
+        fprintf(stderr, "Goal not found after %d steps: \n", fdepth + bdepth - 2);
+        goal.print();
+    }
+}
+
+// Run full BFS and print results (including polynomial coefficients if enabled)
+void run_full_bfs(Matrix id, Matrix goal, byte limit) {
+    int depth = generate_bfs(id, goal, limit, bfs_levels);
+    
+    if (!(goal == Matrix(0))) { // currently unreachable, since bidirectional is preferred
+        if (depth < 0) { // negative means goal is found 
+            depth = -depth;
+            fprintf(stderr, "Goal found at level %d\n", depth - 1);
+            trace bfs_trace;
+            Matrix other = trace_back(goal, bfs_levels, depth, bfs_trace);
+            assert(other == id);
+            std::reverse(bfs_trace.begin(), bfs_trace.end());
+            perm pi;
+            id_perm(pi);
+            print_trace(other, goal, bfs_trace, pi);
+        } else { // currently unreachable
+            fprintf(stderr, "Goal not found after %d steps: \n", depth - 1);
+            goal.print();
+        }
+    }
+    
+    if constexpr (POLY == 1) {
+        fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
+        for (int d = 1; d <= std::min(N/2, depth-1); d++) {
+            fprintf(stderr, "d=%u: [", d);
+            for (byte i = 0; i <= 2*d; i++) {
+                fprintf(stderr, "%lu%c ", 
+                       poly[d][i].load(std::memory_order_relaxed), 
+                       (i < 2*d ? ',' : ']'));
+            }
+            fprintf(stderr, "\n");
+        }
+    }
+}
+
 /*
  * Main: if first arg is -K, set K as limit. If last argument is not -*, set as goal
  */
@@ -261,77 +355,32 @@ int main(int argc, char const *argv[]) {
     options.getcanon=true;   // we want the canonical graph
     options.defaultptn=true; // default coloring
 #endif
-    if (N<1 || N>20) {
-        fprintf(stderr,"N={%u} not supported, only N=1..20\n", N);
+    
+    // Validate matrix size
+    if (N < 1 || N > 20) {
+        fprintf(stderr, "N={%u} not supported, only N=1..20\n", N);
         exit(-1);
     }
-    fprintf(stderr,"Handling matrices of size N = %u\n", N);
-    fprintf(stderr,"Using DTree + %u extra bits, max-size %u\n", E, MAX);
-    fprintf(stderr,"Use Nauty: %u. Swaps-for-free: %u. Polynomial: %u\n", NAUTY, SWAP, POLY);
-    #if defined(_OPENMP)
-        fprintf(stderr,"Running with %d OpenMP threads\n",omp_get_max_threads());
-    #endif
-
+    
+    // Print configuration and parse arguments
+    print_configuration();
+    ProgramOptions opts = parse_arguments(argc, argv);
+    
+    // Initialize tree data structures
     leaves.init(PairSize);
     intermediate.init(PairSize);
-
-    Matrix id(1);
-    Matrix goal(0);
-
-    byte  limit=-1; // search limit when >=0: set with argument "-<limit>"
-
-    if (argc>1 && argv[1][0]=='-') {
-        limit = atoi(argv[1]+1); // skip the leading '-'
-        if (limit!=(byte)-1)     // unsigned, so this is 255
-            fprintf(stderr,"Cutting off at maximum distance: %d\n", limit);
-    }
-    if (argc>1 && argv[argc-1][0]!='-') {
-        goal = Matrix::read(argv[argc-1]);
-        //investigate(goal);
-    }
-    if (!(goal==Matrix(false))) {
-        triple m = bidirectional(id, goal, limit, bfs_fwd, bfs_bwd);
-        mat_idx middle = m.first;
-        int fdepth = m.second.first;
-        int bdepth = m.second.second;
-        if (m.first) {
-            fprintf(stderr,"Found at distance %u (%u + %u)\n", fdepth + bdepth - 2, fdepth-1, bdepth-1);
-            perm pi;
-            Matrix Middle = GET(middle);
-            trace concat = trace_back_middle(id, Middle, goal, bfs_fwd, bfs_bwd, fdepth, bdepth, pi);
-            print_trace(id, goal, concat, pi);
-        } else {
-            fprintf(stderr,"Goal not found after %d steps: \n", fdepth+bdepth-2);
-            goal.print();
-        }
+    
+    // Compute identity matrix
+    Matrix id = Matrix(1);
+    
+    // Run appropriate search algorithm
+    if (!(opts.goal == Matrix(false))) {
+        run_bidirectional_search(id, opts.goal, opts.limit);
     } else {
-        int depth = generate_bfs(id, goal, limit, bfs_levels); 
-        if (!(goal==Matrix(0))) { // currently unreachable, since bidirectional is preferred
-            if (depth < 0) { // negative means goal is found 
-                depth = -depth;
-                fprintf(stderr,"Goal found at level %d\n", depth-1);
-                trace bfs_trace;
-                Matrix other = trace_back(goal, bfs_levels, depth, bfs_trace);
-                assert(other==id);
-                std::reverse(bfs_trace.begin(), bfs_trace.end());
-                perm pi; id_perm(pi);
-                print_trace(other, goal, bfs_trace, pi);
-            }
-            else { // currently unreachable
-                fprintf(stderr,"Goal not found after %d steps: \n", depth-1);
-                goal.print();
-            }
-        }
-        if constexpr (POLY == 1) {
-            fprintf(stderr,"Polynomial coefficients (N=%u):\n", N);
-            for (int d=1; d<=std::min(N/2,depth-1); d++) {
-                fprintf(stderr,"d=%u: [", d);
-                for (byte i=0; i<=2*d; i++)
-                    fprintf(stderr,"%lu%c ", poly[d][i].load(std::memory_order_relaxed), (i<2*d ? ',' : ']'));
-                fprintf(stderr,"\n");
-            }
-        }
+        run_full_bfs(id, opts.goal, opts.limit);
     }
+    
+    // Print total execution time
     std::cerr << std::setprecision(std::numeric_limits<double>::digits10)
               << "Total time: " << currentTime() << "s" << std::endl;
 }

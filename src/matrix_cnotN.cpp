@@ -59,11 +59,13 @@ inline byte predictSize(int depth) {
     return std::min(std::max(lookup + E, 3), MAX); // add E and ensure result is in [3,MAX]
 }
 
-#if SWAP==0
-#define Orbit(stab) (fac[N] / stab)
-#else
-#define Orbit(stab) (fac[N] * (fac[N] / stab)) // Note: stab divides fac[N]
-#endif
+inline counter Orbit(counter stab) {
+    if constexpr (SWAP == 0) {
+        return fac[N] / stab;
+    } else {
+        return fac[N] * (fac[N] / stab); // Note: stab divides fac[N]
+    }
+}
 
 std::array<std::array<std::atomic<counter>,N+1>,N/2+1> poly; // coefficients of the polynomial at distances up to N/2
 

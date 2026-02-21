@@ -90,4 +90,4 @@ fi
 \rm -f $exec
 set -x
 g++ -o $exec src/matrix_cnot.cpp $opts $args $nauty_args
-./$exec -$DIST $goal | tee matrix_cnot$QUBITS.txt
+./$exec -$DIST $goal |& tee matrix_cnot$QUBITS.txt

@@ -4,7 +4,6 @@
 /matrix_cnot?.txt
 /matrix_cnot??.exe
 /matrix_cnot??.txt
-/matrix_cnot_qfat.sh
 
 slurm*.out
 

@@ -1,14 +1,16 @@
 #!/bin/bash
 
-#SBATCH --partition=q128
-#SBATCH --mem=750GB
-#SBATCH --time=2-00:00
-#SBATCH --cpus-per-task=128
+##SBATCH --partition=q128
+##SBATCH --mem=750GB
+##SBATCH --cpus-per-task=128
+##SBATCH --time=2-00:00
 
 ##SBATCH --qos=qosqfat
-##SBATCH --partition=qfat
-##SBATCH --mem=0GB
+#SBATCH --partition=qfat
+#SBATCH --mem=0GB
 ##SBATCH --time=14-00:00
+#SBATCH --time=2-00:00
+#SBATCH --cpus-per-task=40
 
 #SBATCH --job-name=Matrix-CNOT
 #SBATCH --ntasks=1
@@ -74,7 +76,7 @@ exec=matrix_cnot${QUBITS}.exe
 opts="-DN=$QUBITS -DE=$EXTRA -DMAX=$MAX -DPOLY=$POLY -DNAUTY=$NAUTY -DSWAP=$SWAP -DBEAT=$BEAT"
 args="-fopenmp -O3 -DNDEBUG -march=native -std=c++17"
 if [ $NAUTY -eq 1 ]; then
-    nauty_args="-I./nauty nauty/nautyL1.a -DWORDSIZE=64 -DMAXN=WORDSIZE"
+    nauty_args="-I./nauty nauty/nautyW1.a -DWORDSIZE=32 -DMAXN=WORDSIZE"
 fi
 
 # Setting run-time options
@@ -89,5 +91,5 @@ fi
 
 \rm -f $exec
 set -x
-g++ -o $exec src/matrix_cnotN.cpp $opts $args $nauty_args
+g++ -o $exec src/matrix_cnot.cpp $opts $args $nauty_args
 ./$exec -$DIST $goal |& tee matrix_cnot$QUBITS.txt

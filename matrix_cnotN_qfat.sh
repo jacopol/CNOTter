@@ -1,14 +1,15 @@
 #!/bin/bash
 
-#SBATCH --partition=q128
-#SBATCH --mem=750GB
-#SBATCH --time=2-00:00
-#SBATCH --cpus-per-task=128
+##SBATCH --partition=q128
+##SBATCH --mem=750GB
+##SBATCH --time=2-00:00
+##SBATCH --cpus-per-task=128
 
 ##SBATCH --qos=qosqfat
-##SBATCH --partition=qfat
-##SBATCH --mem=0GB
+#SBATCH --partition=qfat
+#SBATCH --mem=0GB
 ##SBATCH --time=14-00:00
+#SBATCH --time=2-00:00
 
 #SBATCH --job-name=Matrix-CNOT
 #SBATCH --ntasks=1

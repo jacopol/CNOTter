@@ -88,7 +88,20 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     std::vector<PaddedCounter> thread_levels(max_threads, {0});
     std::vector<PaddedCounter> thread_counts(max_threads, {0});
 
-    levels[depth-1].parallelForAll(
+    // Hoist loop-invariant references and computations
+    hashset &prev_level = levels[depth-2];
+    hashset &curr_level = levels[depth-1];
+    hashset &next_level = levels[depth];
+    const counter orbit_factor = fac[N];
+#if SWAP==1
+    const counter orbit_factor2 = fac[N] * fac[N];
+#endif
+#if POLY==1
+    const bool compute_poly = (2*(depth-1) <= N);
+    auto &poly_coeffs = poly[depth-1];
+#endif
+
+    curr_level.parallelForAll(
         [&](matrix x){
             int tid = omp_get_thread_num();
             counter &loc_level = thread_levels[tid].value;
@@ -101,13 +114,17 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
                     if (i != j) {
                         matrix y = x ^ (row << j*N);
                         counter Stab = representative(y);
-                        if (!levels[depth-2].contains(y) && !levels[depth-1].contains(y) && levels[depth].insert(y)) {
-                            loc_level += Orbit(Stab);
+                        if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
+#if SWAP==0
+                            loc_level += orbit_factor / Stab;
+#else
+                            loc_level += orbit_factor2 / Stab;
+#endif
                             loc_count++;
 #if POLY==1
-                            if (2*(depth-1)<=N) {
+                            if (compute_poly) {
                                 byte ess = countEssential(y);
-                                poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+                                poly_coeffs[ess] += (fac[ess] * fac[N-ess]) / Stab;
                             }
 #endif
                         }

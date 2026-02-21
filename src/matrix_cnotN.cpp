@@ -109,6 +109,15 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     // current and prev are accessed read-only
     // next is modified (extended) concurrently
 
+    // Padded struct to avoid false sharing
+    struct alignas(64) PaddedCounter {
+        counter value;
+    };
+
+    const int max_threads = omp_get_max_threads();
+    std::vector<PaddedCounter> thread_levels(max_threads, {0});
+    std::vector<PaddedCounter> thread_counts(max_threads, {0});
+
     auto prev = &levels[depth-2];
     auto current = &levels[depth-1];
     auto next = &levels[depth];
@@ -116,14 +125,12 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     current->parallelForAll(
         [&](mat_idx r){
             Matrix x = GET(r);
-            counter loc_level=0, loc_count=0;
+            int tid = omp_get_thread_num();
+            counter &loc_level = thread_levels[tid].value;
+            counter &loc_count = thread_counts[tid].value;
             for (byte i=0; i<N; i++)
                 for (byte j=0; j<N; j++) // add to row j
                     if (i != j) Add(x, i, j, prev, current, next, depth, loc_level, loc_count);
-        if (loc_level > 0) {
-            level += loc_level;
-            count += loc_count;
-        }
 #if BEAT>0
         size_t worker = omp_get_thread_num();
         if (passedTime(lifeTime[worker]) >= BEAT) { // every minute
@@ -135,6 +142,14 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
         }
 #endif
     });
+
+    // Aggregate thread-local results
+    for (int i = 0; i < max_threads; i++) {
+        if (thread_levels[i].value > 0) {
+            level += thread_levels[i].value;
+            count += thread_counts[i].value;
+        }
+    }
     size = count;
     return level;
 }

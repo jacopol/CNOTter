@@ -71,6 +71,41 @@ counter init_level(hashset levels[], matrix start) {
     return Orbit(Stab);
 }
 
+// Process a single CNOT operation: add row i to row j
+// Returns true if a new canonical form was discovered
+inline bool __attribute__((always_inline))
+process_cnot(matrix x, byte j, uint64_t row,
+             hashset &prev_level, hashset &curr_level, hashset &next_level,
+             counter orbit_factor, counter &orbit_sum, counter &matrix_count,
+             uint32_t depth) {
+    matrix y = x ^ (row << j*N);
+    counter Stab = representative(y);
+    
+    // Check if we've seen this canonical form before
+    if (prev_level.contains(y) || curr_level.contains(y))
+        return false;
+    
+    // Try to insert into next level (returns false if already present)
+    if (!next_level.insert(y))
+        return false;
+    
+    // New canonical form found - update counters
+#if SWAP==0
+    orbit_sum += orbit_factor / Stab;
+#else
+    orbit_sum += (orbit_factor * orbit_factor) / Stab;
+#endif
+    matrix_count++;
+    
+#if POLY==1
+    if (2*(depth-1) <= N) {
+        byte ess = countEssential(y);
+        poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+    }
+#endif
+    return true;
+}
+
 // explore and count all successors of the current level
 counter next_level(counter &size, hashset levels[], uint32_t depth) { 
     std::atomic<counter> level(0);
@@ -93,41 +128,23 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     hashset &curr_level = levels[depth-1];
     hashset &next_level = levels[depth];
     const counter orbit_factor = fac[N];
-#if SWAP==1
-    const counter orbit_factor2 = fac[N] * fac[N];
-#endif
-#if POLY==1
-    const bool compute_poly = (2*(depth-1) <= N);
-    auto &poly_coeffs = poly[depth-1];
-#endif
 
     curr_level.parallelForAll(
         [&](matrix x){
             int tid = omp_get_thread_num();
-            counter &loc_level = thread_levels[tid].value;
-            counter &loc_count = thread_counts[tid].value;
+            counter &orbit_sum = thread_levels[tid].value;
+            counter &matrix_count = thread_counts[tid].value;
+            
+            // Generate all N(N-1) successor matrices by applying CNOT(i,j) operations
             for (byte i=0; i<N; i++) {
-                // Hoist loop-invariant computations outside inner loop
+                // Extract row i once for all j destinations
                 uint64_t mask = (1UL<<N*(i+1)) - (1UL<<N*i);
                 uint64_t row = (x & mask) >> i*N;
-                for (byte j=0; j<N; j++) { // add to row j
+                
+                for (byte j=0; j<N; j++) {
                     if (i != j) {
-                        matrix y = x ^ (row << j*N);
-                        counter Stab = representative(y);
-                        if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
-#if SWAP==0
-                            loc_level += orbit_factor / Stab;
-#else
-                            loc_level += orbit_factor2 / Stab;
-#endif
-                            loc_count++;
-#if POLY==1
-                            if (compute_poly) {
-                                byte ess = countEssential(y);
-                                poly_coeffs[ess] += (fac[ess] * fac[N-ess]) / Stab;
-                            }
-#endif
-                        }
+                        process_cnot(x, j, row, prev_level, curr_level, next_level,
+                                   orbit_factor, orbit_sum, matrix_count, depth);
                     }
                 }
             }
@@ -136,7 +153,7 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             if (passedTime(lifeTime[worker]) >= BEAT) { // every minute
                 # pragma omp critical
                 {
-                    lifeBeat(worker, thread_levels[tid].value, thread_counts[tid].value);
+                    lifeBeat(worker, orbit_sum, matrix_count);
                 }
                 lifeTime[worker] = system_clock::now();
             }

@@ -53,11 +53,14 @@ hashset bfs_levels[3*N];    // for one-directional BFS
 hashset bfs_fwd[(3*N+2)/2]; // for bi-directional BFS
 hashset bfs_bwd[(3*N+1)/2];
 
-#if SWAP==0
-#define Orbit(stab) (fac[N]/(stab))
-#else
-#define Orbit(stab) (fac[N]*(fac[N]/(stab))) // Note: stab divides fac[N]
-#endif
+// Compute orbit size from stabilizer size
+inline counter compute_orbit_size(counter stabilizer) {
+    if constexpr (SWAP == 0) {
+        return fac[N] / stabilizer;
+    } else {
+        return (fac[N] * fac[N]) / stabilizer;  // Note: stabilizer divides fac[N]
+    }
+}
 
 counter init_level(hashset levels[], matrix start) {
     levels[0] = hashset(); // level 0 (prev)
@@ -66,7 +69,7 @@ counter init_level(hashset levels[], matrix start) {
     levels[1].init(3);
     counter Stab = representative(start); // modifies start
     levels[1].insert(start);
-    return Orbit(Stab);
+    return compute_orbit_size(Stab);
 }
 
 // Process a single CNOT operation: add row i to row j

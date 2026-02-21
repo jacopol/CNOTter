@@ -159,8 +159,6 @@ public:
 
 };
 
-#if POLY==1 && GOAL==0
-
 #if SWAP==0
 // Test if index i is essential (interacts with another index)
 inline bool testEssential(const Matrix &x, byte i) {
@@ -201,8 +199,6 @@ inline byte countEssential(const Matrix &x) {
     }
     return N-ess;
 }
-
-#endif
 
 #endif
 

@@ -61,26 +61,6 @@ hashset bfs_bwd[(3*N+1)/2];
 #define Orbit(stab) (fac[N]*(fac[N]/(stab))) // Note: stab divides fac[N]
 #endif
 
-void Add(matrix x, byte i, byte j, 
-            hashset *levels, int depth,
-            counter &level, counter &count) {
-    uint64_t mask = (1UL<<N*(i+1)) - (1UL<<N*i);
-    uint64_t row = (x & mask) >> i*N;
-    matrix y = x ^ (row << j*N);
-    counter Stab = representative(y);
-    if (!levels[depth-2].contains(y) && !levels[depth-1].contains(y) && levels[depth].insert(y)) {
-        // only insert and count if new; 
-        level += Orbit(Stab);
-        count++;
-#if POLY==1
-        if (2*(depth-1)<=N) {
-            byte ess = countEssential(y);
-            poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
-        }
-#endif
-    }
-}
-
 counter init_level(hashset levels[], matrix start) {
     levels[0] = hashset(); // level 0 (prev)
     levels[0].init(3);
@@ -113,9 +93,27 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             int tid = omp_get_thread_num();
             counter &loc_level = thread_levels[tid].value;
             counter &loc_count = thread_counts[tid].value;
-            for (byte i=0; i<N; i++)
-                for (byte j=0; j<N; j++) // add to row j
-                    if (i != j) Add(x, i, j, levels, depth, loc_level, loc_count);
+            for (byte i=0; i<N; i++) {
+                // Hoist loop-invariant computations outside inner loop
+                uint64_t mask = (1UL<<N*(i+1)) - (1UL<<N*i);
+                uint64_t row = (x & mask) >> i*N;
+                for (byte j=0; j<N; j++) { // add to row j
+                    if (i != j) {
+                        matrix y = x ^ (row << j*N);
+                        counter Stab = representative(y);
+                        if (!levels[depth-2].contains(y) && !levels[depth-1].contains(y) && levels[depth].insert(y)) {
+                            loc_level += Orbit(Stab);
+                            loc_count++;
+#if POLY==1
+                            if (2*(depth-1)<=N) {
+                                byte ess = countEssential(y);
+                                poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+                            }
+#endif
+                        }
+                    }
+                }
+            }
 #if BEAT>0
             size_t worker = omp_get_thread_num();
             if (passedTime(lifeTime[worker]) >= BEAT) { // every minute

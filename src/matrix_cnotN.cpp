@@ -60,7 +60,7 @@ inline byte predictSize(int depth) {
 }
 
 inline counter Orbit(counter stab) {
-    if (SWAP == 0) {
+    if constexpr (SWAP == 0) {
         return fac_N / stab;
     } else {
         return fac_N * (fac_N / stab); // Note: stab divides fac_N
@@ -335,7 +335,7 @@ void run_full_bfs(Matrix id, Matrix goal, byte limit) {
         }
     }
     
-    if (POLY == 1) {
+    if constexpr (POLY == 1) {
         fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
         for (int d = 1; d <= std::min(N/2, depth-1); d++) {
             fprintf(stderr, "d=%u: [", d);

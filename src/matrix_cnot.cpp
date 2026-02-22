@@ -85,13 +85,13 @@ process_cnot(matrix x, uint64_t row_i, byte j,
     // Check if we've seen this canonical form before
     if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
         // New canonical form found - update counters
-        if (SWAP == 0)
+        if constexpr (SWAP == 0)
             orbit_sum += fac_N / Stab;
         else
             orbit_sum += (fac_N * fac_N) / Stab;
         matrix_count++;
         
-        if (POLY == 1) {
+        if constexpr (POLY == 1) {
             if (2*(depth-1) <= N) {
                 byte ess = countEssential(y);
                 poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
@@ -391,7 +391,7 @@ int main(int argc, char const *argv[]) {
     } else {
         int depth = generate_bfs(id, opts.goal, opts.limit, bfs_levels);
         if (opts.goal) reconstruct_trace(depth, opts.goal, id); // currently unreachable
-        if (POLY==1) print_polynomials(depth);
+        if constexpr (POLY==1) print_polynomials(depth);
     }
     
     // Print total execution time

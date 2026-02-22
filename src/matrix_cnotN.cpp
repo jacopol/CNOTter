@@ -78,18 +78,17 @@ rootset bfs_bwd[(3*N+1)/2];
 
 void Add(const Matrix &x, byte i, byte j, 
                 rootset *prev, rootset *current, rootset *next, int depth,
-                counter &level, counter &count, bool compute_poly) {
-    Matrix y = x.addrow(i,j);
+                counter &level, counter &count, 
+                uint64_t row_i, bool compute_poly) {
+    Matrix y = x.addrow2(row_i, j);
     counter Stab = representative(y);
     if (!CONTAINS(y,*prev) && !CONTAINS(y,*current) && INSERT(y,*next)) {
         // only insert and count if new; 
         level += Orbit(Stab);
         count++;
-        if constexpr (POLY == 1) {
-            if (compute_poly) {
-                byte ess = countEssential(y);
-                poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
-            }
+        if (compute_poly) {
+            byte ess = countEssential(y);
+            poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
         }
     }
 }
@@ -136,10 +135,9 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             counter &loc_count = thread_counts[tid].value;
             // Optimize loop to avoid repeated i != j checks
             for (byte i=0; i<N; i++) {
-                for (byte j=0; j<i; j++)
-                    Add(x, i, j, prev, current, next, depth, loc_level, loc_count, compute_poly);
-                for (byte j=i+1; j<N; j++)
-                    Add(x, i, j, prev, current, next, depth, loc_level, loc_count, compute_poly);
+                for (byte j=0; j<N; j++)
+                    if (i!=j)
+                        Add(x, i, j, prev, current, next, depth, loc_level, loc_count, x.addrow1(i), compute_poly);
             }
 #if BEAT>0
         size_t worker = omp_get_thread_num();

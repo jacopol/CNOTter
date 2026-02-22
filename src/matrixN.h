@@ -125,16 +125,30 @@ public:
         return result;
     }
 
+    /* For efficiency, split addition add(i,j) in two parts:
+        - compute the row for i (independent of j)
+        - add that row to j (can be reused for multiple j) 
+    */
+
+    uint64_t addrow1(uint8_t i) const {
+        assert(i<N);
+        div_t wordi = div(i,NC);
+        uint64_t mask = (1UL << N) - 1; // single row of 1s
+        return (this->_bits[wordi.quot] & (mask << (N*wordi.rem))) >> (N*wordi.rem); // select row i
+    }
+
+    Matrix addrow2(uint64_t row_i, uint8_t j) const {
+        assert(j<N);
+        Matrix result = *this;
+        div_t wordj = div(j,NC);
+        result._bits[wordj.quot] ^= (row_i << (N*wordj.rem));
+        return result;
+    }
+
     /* Add row i to row j*/
     Matrix addrow(uint8_t i, uint8_t j) const {
         assert(i!=j && i<N && j<N);
-        Matrix result=*this;
-        div_t wordi = div(i,NC);
-        div_t wordj = div(j,NC);
-        uint64_t mask = (1UL << N) - 1; // single row of 1s
-        uint64_t row = result._bits[wordi.quot] & (mask << (N*wordi.rem)); // select row i
-        result._bits[wordj.quot] ^= (row >> (N*wordi.rem)) << (N*wordj.rem);
-        return result;
+        return addrow2(addrow1(i),j);
     };
 
     Matrix permute(const uint8_t pi[N]) const { // other[i][j] := this[pi[i]][pi[j]]

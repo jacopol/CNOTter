@@ -55,7 +55,7 @@ hashset bfs_bwd[(3*N+1)/2];
 
 // Compute orbit size from stabilizer size
 inline counter compute_orbit_size(counter stabilizer) {
-    if constexpr (SWAP == 0) {
+    if (SWAP == 0) {
         return fac_N / stabilizer;
     } else {
         return (fac_N * fac_N) / stabilizer;  // Note: stabilizer divides fac_N
@@ -330,20 +330,16 @@ void run_bidirectional_search(matrix id, matrix goal, byte limit) {
 }
 
 // Run full BFS and print results (including polynomial coefficients if enabled)
-void run_full_bfs(matrix id, byte limit) {
-    int depth = generate_bfs(id, 0, limit, bfs_levels);
-    
-    if constexpr (POLY == 1) {
-        fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
-        for (int d = 1; d <= std::min(N/2, depth-1); d++) {
-            fprintf(stderr, "d=%u: [", d);
-            for (byte i = 0; i <= 2*d; i++) {
-                fprintf(stderr, "%lu%c ", 
-                       poly[d][i].load(std::memory_order_relaxed), 
-                       (i < 2*d ? ',' : ']'));
-            }
-            fprintf(stderr, "\n");
+void print_polynomials(int depth) {
+    fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
+    for (int d = 1; d <= std::min(N/2, depth-1); d++) {
+        fprintf(stderr, "d=%u: [", d);
+        for (byte i = 0; i <= 2*d; i++) {
+            fprintf(stderr, "%lu%c ", 
+                    poly[d][i].load(std::memory_order_relaxed), 
+                    (i < 2*d ? ',' : ']'));
         }
+        fprintf(stderr, "\n");
     }
 }
 
@@ -375,7 +371,9 @@ int main(int argc, char const *argv[]) {
     if (opts.goal) {
         run_bidirectional_search(id, opts.goal, opts.limit);
     } else {
-        run_full_bfs(id, opts.limit);
+        int depth = generate_bfs(id, opts.goal, opts.limit, bfs_levels);
+        // assume depth>=0, since we don't call generate_bfs if there is a goal
+        if (POLY==1) print_polynomials(depth);
     }
     
     // Print total execution time

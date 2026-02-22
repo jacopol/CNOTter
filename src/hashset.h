@@ -287,6 +287,8 @@ public:
         }
     }
 
+    // could try: Try parallel for "schedule(dynamic, 64)" or "schedule(guided)".
+
     template<typename FUNC>
     void parallelForAll(FUNC&& func) {
         #pragma omp parallel for

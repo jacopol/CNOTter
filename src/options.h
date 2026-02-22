@@ -8,14 +8,17 @@
 
 using counter = uint64_t;
 
+#ifndef N 
+#define N 6 // Number of qubits, can be at most 8, set with -DN=7
+#endif
+
 // Global definition of factorials up to 20!
 const counter fac[] = {1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 
     39916800, 479001600, 6227020800, 87178291200, 1307674368000, 20922789888000, 
     355687428096000, 6402373705728000, 121645100408832000, 2432902008176640000};
 
-#ifndef N 
-#define N 6 // Number of qubits, can be at most 8, set with -DN=7
-#endif
+// Cache fac[N] to avoid repeated array lookups
+const counter fac_N = fac[N];
 
 #ifndef E 
 #define E 1 // extra bits added to log of hash table size, set with -DE=2

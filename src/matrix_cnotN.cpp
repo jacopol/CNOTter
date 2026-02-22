@@ -59,9 +59,6 @@ inline byte predictSize(int depth) {
     return std::min(std::max(lookup + E, 3), MAX); // add E and ensure result is in [3,MAX]
 }
 
-// Cache fac[N] to avoid repeated array lookups
-const counter fac_N = fac[N];
-
 inline counter Orbit(counter stab) {
     if constexpr (SWAP == 0) {
         return fac_N / stab;
@@ -76,12 +73,11 @@ rootset bfs_levels[3*N];    // for one-directional BFS
 rootset bfs_fwd[(3*N+2)/2]; // for bi-directional BFS
 rootset bfs_bwd[(3*N+1)/2];
 
-void Add(const Matrix &x, byte i, byte j, 
+inline void Add(const Matrix &x, uint64_t row_i, byte j, 
                 rootset *prev, rootset *current, rootset *next, int depth,
-                counter &level, counter &count, 
-                uint64_t row_i, bool compute_poly) {
+                counter &level, counter &count, bool compute_poly) {
     Matrix y = x.addrow2(row_i, j);
-    counter Stab = representative(y);
+    counter Stab = representative(y); // modifies y
     if (!CONTAINS(y,*prev) && !CONTAINS(y,*current) && INSERT(y,*next)) {
         // only insert and count if new; 
         level += Orbit(Stab);
@@ -137,7 +133,7 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             for (byte i=0; i<N; i++) {
                 for (byte j=0; j<N; j++)
                     if (i!=j)
-                        Add(x, i, j, prev, current, next, depth, loc_level, loc_count, x.addrow1(i), compute_poly);
+                        Add(x, x.addrow1(i), j, prev, current, next, depth, loc_level, loc_count, compute_poly);
             }
 #if BEAT>0
         size_t worker = omp_get_thread_num();

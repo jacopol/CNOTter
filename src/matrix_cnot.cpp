@@ -56,9 +56,9 @@ hashset bfs_bwd[(3*N+1)/2];
 // Compute orbit size from stabilizer size
 inline counter compute_orbit_size(counter stabilizer) {
     if constexpr (SWAP == 0) {
-        return fac[N] / stabilizer;
+        return fac_N / stabilizer;
     } else {
-        return (fac[N] * fac[N]) / stabilizer;  // Note: stabilizer divides fac[N]
+        return (fac_N * fac_N) / stabilizer;  // Note: stabilizer divides fac_N
     }
 }
 
@@ -74,37 +74,30 @@ counter init_level(hashset levels[], matrix start) {
 
 // Process a single CNOT operation: add row i to row j
 // Returns true if a new canonical form was discovered
-inline bool __attribute__((always_inline))
-process_cnot(matrix x, byte j, uint64_t row,
+inline void __attribute__((always_inline))
+process_cnot(matrix x, uint64_t row_i, byte j,
              hashset &prev_level, hashset &curr_level, hashset &next_level,
-             counter orbit_factor, counter &orbit_sum, counter &matrix_count,
+             counter &orbit_sum, counter &matrix_count,
              uint32_t depth) {
-    matrix y = x ^ (row << j*N);
+    matrix y = x ^ (row_i << j*N);
     counter Stab = representative(y);
     
     // Check if we've seen this canonical form before
-    if (prev_level.contains(y) || curr_level.contains(y))
-        return false;
-    
-    // Try to insert into next level (returns false if already present)
-    if (!next_level.insert(y))
-        return false;
-    
-    // New canonical form found - update counters
-    if constexpr (SWAP == 0) {
-        orbit_sum += orbit_factor / Stab;
-    } else {
-        orbit_sum += (orbit_factor * orbit_factor) / Stab;
-    }
-    matrix_count++;
-    
-    if constexpr (POLY == 1) {
-        if (2*(depth-1) <= N) {
-            byte ess = countEssential(y);
-            poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+    if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
+        // New canonical form found - update counters
+        if (SWAP == 0)
+            orbit_sum += fac_N / Stab;
+        else
+            orbit_sum += (fac_N * fac_N) / Stab;
+        matrix_count++;
+        
+        if (POLY == 1) {
+            if (2*(depth-1) <= N) {
+                byte ess = countEssential(y);
+                poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+            }
         }
     }
-    return true;
 }
 
 // explore and count all successors of the current level
@@ -128,7 +121,6 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     hashset &prev_level = levels[depth-2];
     hashset &curr_level = levels[depth-1];
     hashset &next_level = levels[depth];
-    const counter orbit_factor = fac[N];
 
     curr_level.parallelForAll(
         [&](matrix x){
@@ -140,12 +132,12 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             for (byte i=0; i<N; i++) {
                 // Extract row i once for all j destinations
                 uint64_t mask = (1UL<<N*(i+1)) - (1UL<<N*i);
-                uint64_t row = (x & mask) >> i*N;
+                uint64_t row_i = (x & mask) >> i*N;
                 
                 for (byte j=0; j<N; j++) {
                     if (i != j) {
-                        process_cnot(x, j, row, prev_level, curr_level, next_level,
-                                   orbit_factor, orbit_sum, matrix_count, depth);
+                        process_cnot(x, row_i, j, prev_level, curr_level, next_level,
+                                     orbit_sum, matrix_count, depth);
                     }
                 }
             }

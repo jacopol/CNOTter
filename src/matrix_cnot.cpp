@@ -329,6 +329,24 @@ void run_bidirectional_search(matrix id, matrix goal, byte limit) {
     }
 }
 
+// currently not reachable
+void reconstruct_trace(int &depth, matrix goal, matrix id) {
+    if (depth < 0) { // negative means goal is found 
+        depth = -depth;
+        fprintf(stderr,"Goal found at level %d\n", depth-1);
+        trace bfs_trace;
+        matrix other = trace_back(goal, bfs_levels, depth, bfs_trace);
+        assert(other==id);
+        std::reverse(bfs_trace.begin(), bfs_trace.end());
+        perm pi; id_perm(pi);
+        print_trace(other, goal, bfs_trace, pi);
+    }
+    else { // currently unreachable
+        fprintf(stderr,"Goal not found after %d steps: \n", depth-1);
+        pretty_matrix(goal);
+    }
+}
+
 // Run full BFS and print results (including polynomial coefficients if enabled)
 void print_polynomials(int depth) {
     fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
@@ -372,7 +390,7 @@ int main(int argc, char const *argv[]) {
         run_bidirectional_search(id, opts.goal, opts.limit);
     } else {
         int depth = generate_bfs(id, opts.goal, opts.limit, bfs_levels);
-        // assume depth>=0, since we don't call generate_bfs if there is a goal
+        if (opts.goal) reconstruct_trace(depth, opts.goal, id); // currently unreachable
         if (POLY==1) print_polynomials(depth);
     }
     

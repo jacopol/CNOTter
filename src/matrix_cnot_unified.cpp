@@ -13,6 +13,8 @@
 #error "Define either -DUSE_SMALL_MATRIX or -DUSE_LARGE_MATRIX at compile time"
 #endif
 
+static_assert(N > 0 && N <= 20, "N must be between 1 and 20");
+
 #ifdef USE_SMALL_MATRIX
     #include "matrix.h"           // Defines: uint64_t ops, read_matrix(), pretty_matrix()
     #include "repr.h"             // Defines: representative(matrix) -> counter
@@ -44,11 +46,6 @@
 #include "matrix_trait.h"          // Defines: MatrixTrait<MatrixImpl>
 //#include "matrix_trait_impl.h"    // Defines: template implementations
 #include <algorithm>            // std::min, std::max
-// ============================================================================
-// STEP 3: Compile-time sanity checks
-// ============================================================================
-
-static_assert(N > 0 && N <= MAXN, "N must be between 1 and MAXN");
 
 // ============================================================================
 // STEP 4: Global data structures (same for both matrix types)
@@ -431,6 +428,7 @@ ProgramOptions parse_arguments(int argc, char* argv[]) {
     
     if (argc > 1 && argv[argc - 1][0] != '-') {
         opts.goal = Trait::read_matrix(argv[argc - 1]);
+        fprintf(stderr, "Searching for goal: %s\n", argv[argc - 1]);
         opts.has_goal = true;
 #ifdef USE_SMALL_MATRIX
         assert(opts.goal != 0 && "0-matrix cannot be generated");

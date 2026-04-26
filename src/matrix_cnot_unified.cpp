@@ -269,7 +269,7 @@ bool level_has_matrix(const MatrixImpl& goal, hashset& level) {
 
 // Forward iterative deepening search
 int generate_bfs(const MatrixImpl& start, const MatrixImpl& goal,
-                uint8_t limit, hashset bfs_levels[]) {
+                uint8_t limit, hashset bfs_levels[], bool has_goal) {
     
     byte depth = 1;
     counter level, levels, orbit, orbits;
@@ -285,14 +285,13 @@ int generate_bfs(const MatrixImpl& start, const MatrixImpl& goal,
         report(level, orbit);
         
         // Check for goal
-        MatrixImpl goal_copy = goal;
-        if (representative(goal_copy) != 0) {  // Non-trivial goal?
+        if (has_goal) {
             if (level_has_matrix(goal, bfs_levels[depth]))
                 return -depth;
         }
         
         // Cleanup old levels to save memory
-        if (depth > 1) bfs_levels[depth - 2].deinit();
+        if (!has_goal && depth > 1) bfs_levels[depth - 2].deinit();
         
         // Stopping condition
         if (depth - 1 == limit) return depth;
@@ -407,11 +406,152 @@ triple bidirectional(const MatrixImpl& start, const MatrixImpl& goal,
 // STEP 6: Main entry point
 // ============================================================================
 
-int main(int argc, char* argv[]) {
-    // Parse arguments, initialize, run algorithm
-    // ... (same logic as original matrix_cnot.cpp or matrix_cnotN.cpp)
+struct ProgramOptions {
+    uint8_t limit;
+    MatrixImpl goal;
+    bool has_goal;
+};
+
+ProgramOptions parse_arguments(int argc, char* argv[]) {
+    ProgramOptions opts;
+    opts.limit = static_cast<uint8_t>(-1);  // 255 means no limit
+    opts.goal = null_matrix();
+    opts.has_goal = false;
     
-    fprintf(stderr, "Using %s\n", USED_REPRESENTATION);
+    if (argc > 1 && argv[1][0] == '-') {
+        opts.limit = static_cast<uint8_t>(atoi(argv[1] + 1));
+        if (opts.limit != static_cast<uint8_t>(-1)) {
+            fprintf(stderr, "Cutting off at maximum distance: %u\n", opts.limit);
+        }
+    }
+    
+    if (argc > 1 && argv[argc - 1][0] != '-') {
+        opts.goal = Trait::read_matrix(argv[argc - 1]);
+        opts.has_goal = true;
+#ifdef USE_SMALL_MATRIX
+        assert(opts.goal != 0 && "0-matrix cannot be generated");
+#endif
+    }
+    
+    return opts;
+}
+
+void print_configuration() {
+    fprintf(stderr, "[%s]\n", USED_REPRESENTATION);
+    fprintf(stderr, "Handling matrices of size N = %u\n", N);
+    fprintf(stderr, "Using DTree + %u extra bits, max-size %u\n", E, MAX);
+    fprintf(stderr, "Use Nauty: %u. Swaps-for-free: %u. Polynomial: %u\n", NAUTY, SWAP, POLY);
+#if defined(_OPENMP)
+    fprintf(stderr, "Running with %d OpenMP threads\n", omp_get_max_threads());
+#endif
+}
+
+inline MatrixImpl compute_identity_matrix() {
+    return Trait::identity();
+}
+
+void run_bidirectional_search(const MatrixImpl& id, const MatrixImpl& goal, uint8_t limit) {
+    triple result = bidirectional(id, goal, limit, bfs_fwd, bfs_bwd);
+    MatrixImpl middle = result.first;
+    int fdepth = result.second.first;
+    int bdepth = result.second.second;
+    
+    if (!Trait::equals(middle, null_matrix())) {
+        fprintf(stderr, "Found at distance %u (%u + %u)\n",
+                fdepth + bdepth - 2, fdepth - 1, bdepth - 1);
+        perm pi;
+#ifdef USE_SMALL_MATRIX
+        trace concat = trace_back_middle(id, middle, goal, bfs_fwd, bfs_bwd, fdepth, bdepth, pi);
+#else
+        MatrixImpl id_copy = id;
+        MatrixImpl middle_copy = middle;
+        MatrixImpl goal_copy = goal;
+        trace concat = trace_back_middle(id_copy, middle_copy, goal_copy,
+                                         bfs_fwd, bfs_bwd, fdepth, bdepth, pi);
+#endif
+        print_trace(id, goal, concat, pi);
+    } else {
+        fprintf(stderr, "Goal not found after %d steps:\n", fdepth + bdepth - 2);
+        Trait::pretty_print(goal);
+    }
+}
+
+void print_polynomials(int depth) {
+    fprintf(stderr, "Polynomial coefficients (N=%u):\n", N);
+    for (int d = 1; d <= std::min(N / 2, depth - 1); d++) {
+        fprintf(stderr, "d=%u: [", d);
+        for (uint8_t i = 0; i <= 2 * d; i++) {
+            fprintf(stderr, "%lu%c ",
+                    poly[d][i].load(std::memory_order_relaxed),
+                    (i < 2 * d ? ',' : ']'));
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
+void reconstruct_trace(int depth, const MatrixImpl& goal, const MatrixImpl& id) {
+    if (depth < 0) {
+        int real_depth = -depth;
+        fprintf(stderr, "Goal found at level %d\n", real_depth - 1);
+        trace bfs_trace;
+        MatrixImpl other = trace_back(goal, bfs_levels, real_depth, bfs_trace);
+        assert(Trait::equals(other, id));
+        std::reverse(bfs_trace.begin(), bfs_trace.end());
+        perm pi;
+        id_perm(pi);
+        print_trace(other, goal, bfs_trace, pi);
+    } else {
+        fprintf(stderr, "Goal not found after %d steps:\n", depth - 1);
+        Trait::pretty_print(goal);
+    }
+}
+
+void run_full_bfs(const MatrixImpl& id, const ProgramOptions& opts) {
+    int depth = generate_bfs(id, opts.goal, opts.limit, bfs_levels, opts.has_goal);
+    if (opts.has_goal) {
+        reconstruct_trace(depth, opts.goal, id);
+    }
+    if constexpr (POLY == 1) {
+        print_polynomials(depth);
+    }
+}
+
+int main(int argc, char* argv[]) {
+#if NAUTY == 1
+    nauty_check(WORDSIZE, m, n, NAUTYVERSIONID);
+    options.getcanon = true;
+    options.defaultptn = true;
+#endif
+
+#ifdef USE_SMALL_MATRIX
+    if (N < 1 || N > 8) {
+        fprintf(stderr, "N={%u} not supported, only N=1..8\n", N);
+        exit(-1);
+    }
+#else
+    if (N < 1 || N > 20) {
+        fprintf(stderr, "N={%u} not supported, only N=1..20\n", N);
+        exit(-1);
+    }
+#endif
+
+    print_configuration();
+    ProgramOptions opts = parse_arguments(argc, argv);
+
+#ifdef USE_LARGE_MATRIX
+    leaves.init(PairSize);
+    intermediate.init(PairSize);
+#endif
+
+    MatrixImpl id = compute_identity_matrix();
+    if (opts.has_goal) {
+        run_bidirectional_search(id, opts.goal, opts.limit);
+    } else {
+        run_full_bfs(id, opts);
+    }
+    
+    std::cerr << std::setprecision(std::numeric_limits<double>::digits10)
+              << "Total time: " << currentTime() << "s" << std::endl;
     
     return 0;
 }

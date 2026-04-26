@@ -110,10 +110,38 @@ struct MatrixTrait<uint64_t> {
     }
     
     // Read matrix from file
-    static MatrixType read_matrix(const std::string& filename);
+    static MatrixType read_matrix(const std::string& filename) {
+        std::ifstream input(filename, std::ios_base::in);
+        if (!input.is_open()) {
+            std::cerr << "Could not open input file: " << filename << "\n";
+            exit(-1);
+        }
+        MatrixType result = 0;
+        uint8_t idx = 0;
+        for (uint8_t i = 0; i < N; i++)
+            for (uint8_t j = 0; j < N; j++, idx++) {
+                char c = 0;
+                do {
+                    input.get(c);
+                } while (!input.eof() && (c == ' ' || c == '\n' || c == '\t' || c == '\r'));
+                if (c == '1') result ^= 1UL << idx;
+                else assert(c == '0' && "Expected input 0 or 1");
+            }
+        return result;
+    }
     
     // Pretty-print matrix
-    static void pretty_print(const MatrixType& x);
+    static void pretty_print(const MatrixType& x) {
+        MatrixType y = x;
+        std::string delimiter(N * 2 - 1, '=');
+        std::cerr << delimiter << std::endl;
+        for (uint8_t i = 0; i < N; i++) {
+            for (uint8_t j = 0; j < N; j++, y >>= 1)
+                fprintf(stderr, "%lu ", y & 1UL);
+            fprintf(stderr, "\n");
+        }
+        std::cerr << delimiter << std::endl;
+    }
     
     // Equality comparison (for hashset and ordering)
     static inline bool equals(const MatrixType& a, const MatrixType& b) {

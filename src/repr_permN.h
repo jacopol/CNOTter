@@ -19,6 +19,19 @@ inline void fingerprint(const Matrix &x, finger_t finger[N]) {
         finger[i][2] = 0;
         finger[i][3] = i;
     }
+#if NR==1
+    uint64_t bits = x._bits[0];
+    for (byte i=0; i<N; i++)
+        for (byte j=0; j<N; j++, bits >>= 1)
+            if (bits & 1UL) {
+                if (i == j)
+                    finger[i][0] = 0;
+                else {
+                    finger[i][1]++;
+                    finger[j][2]++;
+                }
+            }
+#else
     for (byte i=0; i<N; i++)
         for (byte j=0; j<N; j++) // traverse all bits in x
             if (x.get(i,j)) {
@@ -27,7 +40,10 @@ inline void fingerprint(const Matrix &x, finger_t finger[N]) {
                 else {
                     finger[i][1]++; // count 1 on row i
                     finger[j][2]++; // count 1 on col j
-}           }   }
+                }
+            }
+#endif
+}
 
 // compute and sort the finger-print, return the normalized matrix and permutation
 inline Matrix normalize(const Matrix &x, finger_t finger[N], perm pi) {
@@ -142,6 +158,19 @@ void representativePerm(const Matrix &x, perm pi) {
 // Assume that x is normalized
 // Compute the first essential index
 inline byte countEss(const Matrix &x) {
+#if NR==1
+    uint64_t bits = x._bits[0];
+    for (byte ess=0; ess<N; ess++) {
+        uint64_t diag_mask = 1UL << ((N + 1) * ess);
+        if (!(bits & diag_mask)) return ess;
+        for (byte i=0; i<N; i++) {
+            if (i == ess) continue;
+            if ((bits & (1UL << (N * ess + i))) || (bits & (1UL << (N * i + ess))))
+                return ess;
+        }
+    }
+    return N;
+#else
     for (byte ess=0; ess<N; ess++)
         for (byte i=0; i<N; i++)
             if (i==ess) {
@@ -151,6 +180,7 @@ inline byte countEss(const Matrix &x) {
                 if (x.get(ess,i) || x.get(i,ess)) return ess;
             }
     return N;
+#endif
 }
 
 void pretty_finger(finger_t finger[N]) {

@@ -21,7 +21,7 @@ constexpr int PairSize=32;
 
 // Test if vetctor x is in the table.
 // Early termination if a subvector of x is unknown. 
-bool CONTAINS(Matrix x, rootset &table) {
+bool CONTAINS(const Matrix &x, rootset &table) {
     uint64_t root;
     if (NR==1) { // no need for compression
         root = x._bits[0];
@@ -69,7 +69,7 @@ Matrix GET(mat_idx root) {
     return result;
 }
 
-bool INSERT(Matrix x, rootset &table) {
+bool INSERT(const Matrix &x, rootset &table) {
     mat_idx root;
 
     if (NR==1) { // no need for compression

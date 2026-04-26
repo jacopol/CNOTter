@@ -23,7 +23,7 @@ constexpr int PairSize=32;
 // Early termination if a subvector of x is unknown. 
 bool CONTAINS(const Matrix &x, rootset &table) {
     uint64_t root;
-    if (NR==1) { // no need for compression
+    if constexpr (NR == 1) { // no need for compression
         root = x._bits[0];
     }
     else {
@@ -49,7 +49,7 @@ bool CONTAINS(const Matrix &x, rootset &table) {
 
 Matrix GET(mat_idx root) {
     Matrix result;
-    if (NR==1) { // no need for compression
+    if constexpr (NR == 1) { // no need for compression
         result._bits[0] = root;
         return result;
     }
@@ -72,7 +72,7 @@ Matrix GET(mat_idx root) {
 bool INSERT(const Matrix &x, rootset &table) {
     mat_idx root;
 
-    if (NR==1) { // no need for compression
+    if constexpr (NR == 1) { // no need for compression
         root = x._bits[0];
     }
     else {

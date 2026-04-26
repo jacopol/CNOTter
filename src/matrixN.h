@@ -6,11 +6,11 @@
 #include <cstdio>
 #include <array>
 
-#define NC (64 / N)        // Columns: number of rows in a single word.
-#define NR ((N-1) / NC +1) // Rows: number of words needed (last word may not be filled)
-
 using byte = uint8_t;
 using mat_idx = uint64_t;
+
+constexpr byte NC = 64 / N;           // Columns: number of rows in a single word.
+constexpr byte NR = (N - 1) / NC + 1; // Rows: number of words needed (last word may not be filled)
 
 // TODO: move to permutation.h
 
@@ -65,30 +65,30 @@ public:
     }
 
     inline bool get(uint8_t i, uint8_t j) const {
-#if NR==1
-        return (_bits[0] >> (N * i + j)) & 1UL;
-#else
-        div_t wordi = div(i,NC);
-        uint64_t res = _bits[wordi.quot] & (1UL << (N * wordi.rem + j));
-        return (res ? true : false);
-#endif
+        if constexpr (NR == 1) {
+            return (_bits[0] >> (N * i + j)) & 1UL;
+        } else {
+            div_t wordi = div(i,NC);
+            uint64_t res = _bits[wordi.quot] & (1UL << (N * wordi.rem + j));
+            return (res ? true : false);
+        }
     }
 
     inline void set(uint8_t i, uint8_t j, bool val) {
-#if NR==1
-        uint64_t mask = 1UL << (N * i + j);
-        if (val)
-            _bits[0] |= mask;
-        else
-            _bits[0] &= ~mask;
-#else
-        div_t wordi = div(i,NC);
-        uint64_t mask = (1UL << (N * wordi.rem + j));
-        if (val)
-            _bits[wordi.quot] |= mask;
-        else
-            _bits[wordi.quot] &= ~ mask;
-#endif
+        if constexpr (NR == 1) {
+            uint64_t mask = 1UL << (N * i + j);
+            if (val)
+                _bits[0] |= mask;
+            else
+                _bits[0] &= ~mask;
+        } else {
+            div_t wordi = div(i,NC);
+            uint64_t mask = (1UL << (N * wordi.rem + j));
+            if (val)
+                _bits[wordi.quot] |= mask;
+            else
+                _bits[wordi.quot] &= ~ mask;
+        }
     }
 
     bool operator==(const Matrix &other) const { // assume unused bits are 0
@@ -147,25 +147,25 @@ public:
 
     uint64_t addrow1(uint8_t i) const {
         assert(i<N);
-#if NR==1
-        uint64_t mask = (1UL << N) - 1;
-        return (_bits[0] >> (N * i)) & mask;
-#else
-        div_t wordi = div(i,NC);
-        uint64_t mask = (1UL << N) - 1; // single row of 1s
-        return (this->_bits[wordi.quot] & (mask << (N*wordi.rem))) >> (N*wordi.rem); // select row i
-#endif
+        if constexpr (NR == 1) {
+            uint64_t mask = (1UL << N) - 1;
+            return (_bits[0] >> (N * i)) & mask;
+        } else {
+            div_t wordi = div(i,NC);
+            uint64_t mask = (1UL << N) - 1; // single row of 1s
+            return (this->_bits[wordi.quot] & (mask << (N*wordi.rem))) >> (N*wordi.rem); // select row i
+        }
     }
 
     Matrix addrow2(uint64_t row_i, uint8_t j) const {
         assert(j<N);
         Matrix result = *this;
-#if NR==1
-        result._bits[0] ^= (row_i << (N * j));
-#else
-        div_t wordj = div(j,NC);
-        result._bits[wordj.quot] ^= (row_i << (N*wordj.rem));
-#endif
+        if constexpr (NR == 1) {
+            result._bits[0] ^= (row_i << (N * j));
+        } else {
+            div_t wordj = div(j,NC);
+            result._bits[wordj.quot] ^= (row_i << (N*wordj.rem));
+        }
         return result;
     }
 
@@ -176,47 +176,47 @@ public:
     };
 
     Matrix permute(const uint8_t pi[N]) const { // other[i][j] := this[pi[i]][pi[j]]
-#if NR==1
-        Matrix other;
-        uint64_t y = 0;
-        for (uint8_t i = N - 1; i < N; i--)
-            for (uint8_t j = N - 1; j < N; j--) {
-                y <<= 1;
-                y |= (_bits[0] >> (pi[i] * N + pi[j])) & 1UL;
+        if constexpr (NR == 1) {
+            Matrix other;
+            uint64_t y = 0;
+            for (uint8_t i = N - 1; i < N; i--)
+                for (uint8_t j = N - 1; j < N; j--) {
+                    y <<= 1;
+                    y |= (_bits[0] >> (pi[i] * N + pi[j])) & 1UL;
+                }
+            other._bits[0] = y;
+            return other;
+        } else {
+            Matrix other;
+            for (uint8_t i=0; i<N; i++) {
+                for (uint8_t j=0; j<N; j++) {
+                    other.set(i,j, get(pi[i],pi[j]));
+                }
             }
-        other._bits[0] = y;
-        return other;
-#else
-        Matrix other;
-        for (uint8_t i=0; i<N; i++) {
-            for (uint8_t j=0; j<N; j++) {
-                other.set(i,j, get(pi[i],pi[j]));
-            }
+            return other;
         }
-        return other;
-#endif
     }
 
     Matrix permute2(const uint8_t pi1[N], const uint8_t pi2[N]) const { // other[i][j] := this[pi1[i]][pi2[j]]
-#if NR==1
-        Matrix other;
-        uint64_t y = 0;
-        for (uint8_t i = N - 1; i < N; i--)
-            for (uint8_t j = N - 1; j < N; j--) {
-                y <<= 1;
-                y |= (_bits[0] >> (pi1[i] * N + pi2[j])) & 1UL;
+        if constexpr (NR == 1) {
+            Matrix other;
+            uint64_t y = 0;
+            for (uint8_t i = N - 1; i < N; i--)
+                for (uint8_t j = N - 1; j < N; j--) {
+                    y <<= 1;
+                    y |= (_bits[0] >> (pi1[i] * N + pi2[j])) & 1UL;
+                }
+            other._bits[0] = y;
+            return other;
+        } else {
+            Matrix other;
+            for (uint8_t i=0; i<N; i++) {
+                for (uint8_t j=0; j<N; j++) {
+                    other.set(i,j, get(pi1[i],pi2[j]));
+                }
             }
-        other._bits[0] = y;
-        return other;
-#else
-        Matrix other;
-        for (uint8_t i=0; i<N; i++) {
-            for (uint8_t j=0; j<N; j++) {
-                other.set(i,j, get(pi1[i],pi2[j]));
-            }
+            return other;
         }
-        return other;
-#endif
     }
 
 };

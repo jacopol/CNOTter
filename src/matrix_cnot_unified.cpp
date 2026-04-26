@@ -24,6 +24,7 @@
     #include "matrixN.h"          // Defines: Matrix class with bit-packing
     #include "reprN.h"            // Defines: representative(Matrix) -> counter
     #include "trace_backN.h"      // Defines: Matrix tracing functions
+    #include "tree.h"             // Defines: CONTAINS/INSERT/GET wrappers for Matrix storage
     using MatrixImpl = Matrix;
     #define USED_REPRESENTATION "Large Matrix (Matrix class, N>8)"
 #endif
@@ -98,6 +99,43 @@ std::vector<std::chrono::system_clock::time_point> lifeTime;
 // STEP 5: Algorithm functions - unified via MatrixTrait
 // ============================================================================
 
+inline MatrixImpl null_matrix() {
+#ifdef USE_SMALL_MATRIX
+    return 0;
+#else
+    return Matrix(false);
+#endif
+}
+
+inline bool level_contains(hashset& level, const MatrixImpl& x) {
+#ifdef USE_SMALL_MATRIX
+    return level.contains(x);
+#else
+    return CONTAINS(x, level);
+#endif
+}
+
+inline bool level_insert(hashset& level, const MatrixImpl& x) {
+#ifdef USE_SMALL_MATRIX
+    return level.insert(x);
+#else
+    return INSERT(x, level);
+#endif
+}
+
+template<typename Fn>
+inline void level_for_each_matrix(hashset& level, Fn&& fn) {
+#ifdef USE_SMALL_MATRIX
+    level.parallelForAll([&](const uint64_t& x) {
+        fn(x);
+    });
+#else
+    level.parallelForAll([&](const mat_idx& root) {
+        fn(GET(root));
+    });
+#endif
+}
+
 // Predict hash table size for a given depth
 inline uint8_t predictSize(int depth) {
     uint8_t lookup = levelSizes[std::min(N, 10)][depth - 2];
@@ -125,8 +163,8 @@ inline void process_cnot(const MatrixImpl& x, uint64_t row_i, uint8_t j,
     counter Stab = representative(y);  // Modifies y in-place to canonical form
     
     // Check if we've seen this canonical form before
-    if (!prev_level.contains(y) && !curr_level.contains(y) && 
-        next_level.insert(y)) {
+    if (!level_contains(prev_level, y) && !level_contains(curr_level, y) &&
+        level_insert(next_level, y)) {
         // New canonical form found - update counters
         orbit_sum += compute_orbit_size(Stab);
         matrix_count++;
@@ -148,7 +186,7 @@ counter init_level(hashset levels[], MatrixImpl start) {
     levels[1].init(3);
     
     counter Stab = representative(start);  // Modifies start to canonical form
-    levels[1].insert(start);
+    level_insert(levels[1], start);
     
     return compute_orbit_size(Stab);
 }
@@ -175,9 +213,10 @@ counter next_level(counter& size, hashset levels[], uint32_t depth) {
     
     // Hoist computation
     const bool compute_poly = (POLY == 1) && (2 * (depth - 1) <= N);
+    (void)compute_poly;
     
     // Parallel iteration over all matrices at current level
-    curr_level.parallelForAll([&](const MatrixImpl& x) {
+    level_for_each_matrix(curr_level, [&](const MatrixImpl& x) {
         int tid = omp_get_thread_num();
         counter& orbit_sum = thread_levels[tid].value;
         counter& matrix_count = thread_counts[tid].value;
@@ -220,9 +259,9 @@ counter next_level(counter& size, hashset levels[], uint32_t depth) {
 }
 
 // Find a matrix in a level (used for goal checking)
-bool find_level(const MatrixImpl& goal, hashset& level) {
+bool level_has_matrix(const MatrixImpl& goal, hashset& level) {
     bool found = false;
-    level.parallelForAll([&](const MatrixImpl& x) {
+    level_for_each_matrix(level, [&](const MatrixImpl& x) {
         if (Trait::equals(x, goal)) found = true;
     });
     return found;
@@ -248,7 +287,7 @@ int generate_bfs(const MatrixImpl& start, const MatrixImpl& goal,
         // Check for goal
         MatrixImpl goal_copy = goal;
         if (representative(goal_copy) != 0) {  // Non-trivial goal?
-            if (find_level(goal, bfs_levels[depth]))
+            if (level_has_matrix(goal, bfs_levels[depth]))
                 return -depth;
         }
         
@@ -281,17 +320,19 @@ int generate_bfs(const MatrixImpl& start, const MatrixImpl& goal,
 
 // Find a matrix in intersection of two levels
 MatrixImpl intersect(hashset& L1, hashset& L2) {
-    std::atomic<MatrixImpl> joint =
-#ifdef USE_SMALL_MATRIX
-        0
-#else
-        Matrix(false)  // Null matrix
-#endif
-    ;
+    MatrixImpl joint = null_matrix();
+    std::atomic<bool> found(false);
     
-    L1.parallelForAll([&](const MatrixImpl& x) {
-        if (L2.contains(x))
-            joint = x;  // Overwrite with intersection find (non-atomic is OK)
+    level_for_each_matrix(L1, [&](const MatrixImpl& x) {
+        if (!found.load(std::memory_order_relaxed) && level_contains(L2, x)) {
+            #pragma omp critical
+            {
+                if (!found.load(std::memory_order_relaxed)) {
+                    joint = x;
+                    found.store(true, std::memory_order_relaxed);
+                }
+            }
+        }
     });
     
     return joint;
@@ -321,13 +362,7 @@ triple bidirectional(const MatrixImpl& start, const MatrixImpl& goal,
     
     // Check initial intersection
     MatrixImpl m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
-    if (!Trait::equals(m, 
-#ifdef USE_SMALL_MATRIX
-        0
-#else
-        Matrix(false)
-#endif
-    ))
+    if (!Trait::equals(m, null_matrix()))
         return {m, {fdepth, bdepth}};
     
     // Alternating expansion of smallest frontier
@@ -361,13 +396,7 @@ triple bidirectional(const MatrixImpl& start, const MatrixImpl& goal,
         
         // Check intersection at current frontier
         m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
-        if (!Trait::equals(m,
-#ifdef USE_SMALL_MATRIX
-            0
-#else
-            Matrix(false)
-#endif
-        ))
+        if (!Trait::equals(m, null_matrix()))
             return {m, {fdepth, bdepth}};
     }
     

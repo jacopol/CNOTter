@@ -10,7 +10,9 @@
 #include <string>
 #include "options.h"
 
+#ifdef USE_LARGE_MATRIX
 #include "matrixN.h"
+#endif
 
 // ============================================================================
 // Base trait template - specializations follow
@@ -129,6 +131,7 @@ struct MatrixTrait<uint64_t> {
 // This version uses a bit-packed array stored in Matrix class.
 // See matrixN.h for the Matrix class definition.
 
+#ifdef USE_LARGE_MATRIX
 template<>
 struct MatrixTrait<Matrix> {
     using MatrixType = Matrix;
@@ -195,6 +198,7 @@ struct MatrixTrait<Matrix> {
         return a < b;
     }
 };
+#endif
 
 // ============================================================================
 // Generic functions that work with any matrix type via the trait

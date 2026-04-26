@@ -1,6 +1,7 @@
 #ifndef REPR_H
 #define REPR_H
 
+#include <array>
 #include <algorithm>
 #include "matrixN.h"
 
@@ -45,6 +46,20 @@ inline bool next_cycle_perm(const byte cycles[], byte list[]) {
 }
 
 // This function normalizes y, initializes cycles, and returns the first essential index
+/**
+ * @brief Computes the cycles of a permutation matrix.
+ *
+ * Normalizes the given matrix and identifies cycles among the essential
+ * indices (indices with non-zero fingerprints). Groups consecutive indices
+ * sharing the same fingerprint into cycles and stores their lengths.
+ *
+ * @param cycles Output array where each element represents the length of a
+ *               cycle. Terminated by a 0 sentinel value.
+ * @param y      The permutation matrix to analyze. Modified in-place by
+ *               normalization.
+ * @return The number of inessential indices (indices with zero fingerprint)
+ *         skipped at the beginning.
+ */
 inline byte compute_cycles(byte cycles[], Matrix &y) {
     finger_t finger[N]; // finger print
     perm pi;

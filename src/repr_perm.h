@@ -1,6 +1,7 @@
 #ifndef REPR_H
 #define REPR_H
 
+#include <array>
 #include <algorithm>
 #include "matrix.h"
 

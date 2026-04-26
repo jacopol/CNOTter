@@ -98,15 +98,15 @@ matrix permute2(matrix x, const perm pi1, const perm pi2) {
     return y;
 }
 
-#define get(x,i,j) (x & 1UL<<(N*i+j))
+#define mget(x,i,j) (x & 1UL<<(N*i+j))
 
 #if SWAP==0
 // Test if index i is essential (interacts with another index)
 inline bool testEssential(matrix x, byte i) {
-    if (!get(x,i,i))
+    if (!mget(x,i,i))
         return true;
     for (byte j=0; j<N; j++)
-        if (j!=i && (get(x,j,i) || get(x,i,j)))
+        if (j!=i && (mget(x,j,i) || mget(x,i,j)))
             return true;
     return false;
 }
@@ -126,11 +126,11 @@ inline byte countEssential(matrix x) {
     for (byte i=0; i<N; i++) {
         byte count=0, jj; // count number of ones and remember their column
         for (byte j=0; j<N && count<2; j++)
-            if (get(x,i,j)) { count++; jj=j; }
+            if (mget(x,i,j)) { count++; jj=j; }
         if (count==1) {
             bool essential=true;
             for (byte k=0; k<N; k++) // test of rest of column is zeros
-                if (k!=i && get(x,k,jj)) {
+                if (k!=i && mget(x,k,jj)) {
                     essential = false;  
                     break;
                 }

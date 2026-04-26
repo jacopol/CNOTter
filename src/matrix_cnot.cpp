@@ -85,10 +85,7 @@ process_cnot(matrix x, uint64_t row_i, byte j,
     // Check if we've seen this canonical form before
     if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
         // New canonical form found - update counters
-        if constexpr (SWAP == 0)
-            orbit_sum += fac_N / Stab;
-        else
-            orbit_sum += (fac_N * fac_N) / Stab;
+        orbit_sum += compute_orbit_size(Stab);
         matrix_count++;
         
         if constexpr (POLY == 1) {

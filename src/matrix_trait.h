@@ -10,9 +10,7 @@
 #include <string>
 #include "options.h"
 
-// Forward declarations - defined in matrix.h and matrixN.h
-// Don't include them here to avoid circular dependencies
-class Matrix;
+#include "matrixN.h"
 
 // ============================================================================
 // Base trait template - specializations follow

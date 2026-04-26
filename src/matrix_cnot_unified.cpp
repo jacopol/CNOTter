@@ -41,8 +41,8 @@
 #include "timing.h"               // Defines: lifeBeat(), passedTime()
 #include "hashset.h"              // Defines: thread-safe hash set
 #include "matrix_trait.h"          // Defines: MatrixTrait<MatrixImpl>
-#include "matrix_trait_impl.h"    // Defines: template implementations
-
+//#include "matrix_trait_impl.h"    // Defines: template implementations
+#include <algorithm>            // std::min, std::max
 // ============================================================================
 // STEP 3: Compile-time sanity checks
 // ============================================================================
@@ -100,7 +100,7 @@ std::vector<std::chrono::system_clock::time_point> lifeTime;
 
 // Predict hash table size for a given depth
 inline uint8_t predictSize(int depth) {
-    uint8_t lookup = levelSizes[std::min(N, 10UL)][depth - 2];
+    uint8_t lookup = levelSizes[std::min(N, 10)][depth - 2];
     return std::min(std::max(lookup + E, 3), MAX);
 }
 

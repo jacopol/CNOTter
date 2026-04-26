@@ -131,7 +131,13 @@ inline void level_for_each_matrix(hashset& level, Fn&& fn) {
     });
 #else
     level.parallelForAll([&](const mat_idx& root) {
-        fn(GET(root));
+        if constexpr (NR == 1) {
+            MatrixImpl x;
+            x._bits[0] = root;
+            fn(x);
+        } else {
+            fn(GET(root));
+        }
     });
 #endif
 }
@@ -260,11 +266,9 @@ counter next_level(counter& size, hashset levels[], uint32_t depth) {
 
 // Find a matrix in a level (used for goal checking)
 bool level_has_matrix(const MatrixImpl& goal, hashset& level) {
-    bool found = false;
-    level_for_each_matrix(level, [&](const MatrixImpl& x) {
-        if (Trait::equals(x, goal)) found = true;
-    });
-    return found;
+    MatrixImpl canonical_goal = goal;
+    representative(canonical_goal);
+    return level_contains(level, canonical_goal);
 }
 
 // Forward iterative deepening search

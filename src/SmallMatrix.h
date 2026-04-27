@@ -2,23 +2,30 @@
 #define SMALLMATRIX_H
 
 #include <cassert>
+#include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <string>
 
-#include "options.h"
-
+template <std::size_t N>
 class SmallMatrix {
 public:
     using WordType = uint64_t;
+    static constexpr std::size_t kN = N;
+
+    static_assert(N > 0, "SmallMatrix dimension must be > 0");
+    static_assert(N * N <= 64, "SmallMatrix fits only up to 64 bits");
 
 private:
     WordType bits_ = 0;
 
 public:
     SmallMatrix() = default;
+
+    explicit SmallMatrix(WordType raw_bits) : bits_(raw_bits) {}
 
     explicit SmallMatrix(bool diag) {
         if (!diag) {
@@ -29,7 +36,9 @@ public:
         }
     }
 
-    explicit SmallMatrix(WordType raw_bits) : bits_(raw_bits) {}
+    static inline SmallMatrix<N> identity() {
+        return SmallMatrix<N>(true);
+    }
 
     inline bool get(uint8_t i, uint8_t j) const {
         return (bits_ >> (N * i + j)) & 1UL;
@@ -44,15 +53,11 @@ public:
         }
     }
 
-    static inline SmallMatrix identity() {
-        return SmallMatrix(true);
-    }
-
-    bool operator==(const SmallMatrix &other) const {
+    bool operator==(const SmallMatrix<N> &other) const {
         return bits_ == other.bits_;
     }
 
-    bool operator<(const SmallMatrix &other) const {
+    bool operator<(const SmallMatrix<N> &other) const {
         return bits_ < other.bits_;
     }
 
@@ -62,45 +67,45 @@ public:
         return (bits_ >> (N * i)) & mask;
     }
 
-    SmallMatrix addrow2(uint64_t row_i, uint8_t j) const {
+    SmallMatrix<N> addrow2(uint64_t row_i, uint8_t j) const {
         assert(j < N);
-        return SmallMatrix(bits_ ^ (row_i << (N * j)));
+        return SmallMatrix<N>(bits_ ^ (row_i << (N * j)));
     }
 
-    SmallMatrix addrow(uint8_t i, uint8_t j) const {
+    SmallMatrix<N> addrow(uint8_t i, uint8_t j) const {
         assert(i != j && i < N && j < N);
         return addrow2(addrow1(i), j);
     }
 
-    SmallMatrix permute(const uint8_t pi[N]) const {
+    SmallMatrix<N> permute(const uint8_t pi[N]) const {
         uint64_t y = 0;
-        for (uint8_t i = N - 1; i < N; i--) {
-            for (uint8_t j = N - 1; j < N; j--) {
+        for (int i = static_cast<int>(N) - 1; i >= 0; i--) {
+            for (int j = static_cast<int>(N) - 1; j >= 0; j--) {
                 y <<= 1;
                 y |= (bits_ >> (pi[i] * N + pi[j])) & 1UL;
             }
         }
-        return SmallMatrix(y);
+        return SmallMatrix<N>(y);
     }
 
-    SmallMatrix permute2(const uint8_t pi1[N], const uint8_t pi2[N]) const {
+    SmallMatrix<N> permute2(const uint8_t pi1[N], const uint8_t pi2[N]) const {
         uint64_t y = 0;
-        for (uint8_t i = N - 1; i < N; i--) {
-            for (uint8_t j = N - 1; j < N; j--) {
+        for (int i = static_cast<int>(N) - 1; i >= 0; i--) {
+            for (int j = static_cast<int>(N) - 1; j >= 0; j--) {
                 y <<= 1;
                 y |= (bits_ >> (pi1[i] * N + pi2[j])) & 1UL;
             }
         }
-        return SmallMatrix(y);
+        return SmallMatrix<N>(y);
     }
 
-    static SmallMatrix read(const std::string &filename) {
+    static SmallMatrix<N> read(const std::string &filename) {
         std::ifstream input(filename, std::ios_base::in);
         if (!input.is_open()) {
             std::cerr << "Could not open input file: " << filename << "\n";
             exit(-1);
         }
-        SmallMatrix result;
+        SmallMatrix<N> result;
         uint8_t idx = 0;
         for (uint8_t i = 0; i < N; i++) {
             for (uint8_t j = 0; j < N; j++, idx++) {

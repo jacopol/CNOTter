@@ -1,74 +1,105 @@
 #ifndef MATRIXN_H
 #define MATRIXN_H
+
 #include "options.h"
 
-#include <cstdlib>
-#include <cstdio>
 #include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <string>
 
 using byte = uint8_t;
 using mat_idx = uint64_t;
 
-constexpr byte NC = 64 / N;           // Columns: number of rows in a single word.
-constexpr byte NR = (N - 1) / NC + 1; // Rows: number of words needed (last word may not be filled)
+// options.h defines N as a preprocessor macro. To use template parameter name N,
+// temporarily undefine it within this header and restore it at the end.
+#ifdef N
+constexpr std::size_t MATRIXN_COMPILE_N = N;
+#pragma push_macro("N")
+#undef N
+#define MATRIXN_RESTORE_N_MACRO 1
+#endif
 
 // TODO: move to permutation.h
 
-using perm = byte[N];       // permutation of N elements
+template<std::size_t N>
+using perm = byte[N]; // permutation of N elements
 
-void pretty_perm(const perm pi) {
-    for (byte i=0; i<N; i++)
-        fprintf(stderr,"%3u", i);
+template<std::size_t N>
+inline void pretty_perm(const byte (&pi)[N]) {
+    for (std::size_t i = 0; i < N; i++) {
+        fprintf(stderr, "%3zu", i);
+    }
     fprintf(stderr,"\n");
-    for (byte i=0; i<N; i++)
-        fprintf(stderr,"%3u", pi[i]);
+    for (std::size_t i = 0; i < N; i++) {
+        fprintf(stderr, "%3u", pi[i]);
+    }
     fprintf(stderr,"\n");
 }
 
 // return the identity permutation in pi
-inline void id_perm(perm pi) {
-    for (byte i=0; i<N; i++)
+template<std::size_t N>
+inline void id_perm(byte (&pi)[N]) {
+    for (std::size_t i = 0; i < N; i++) {
         pi[i] = i;
+    }
 }
 
 // return the inverse permutation in pi_inv
-inline void inv_perm(const perm pi, perm pi_inv) {
-    for (byte i=0; i<N; i++)
+template<std::size_t N>
+inline void inv_perm(const byte (&pi)[N], byte (&pi_inv)[N]) {
+    for (std::size_t i = 0; i < N; i++) {
         pi_inv[pi[i]] = i;
+    }
 }
 
 // return the composition pi = pi1 . pi2
-inline void compose_perm(const perm pi1, const perm pi2, perm pi) {
-    for (byte i=0; i<N; i++)
+template<std::size_t N>
+inline void compose_perm(const byte (&pi1)[N], const byte (&pi2)[N], byte (&pi)[N]) {
+    for (std::size_t i = 0; i < N; i++) {
         pi[i] = pi2[pi1[i]]; // non-standard, since we permute indices
+    }
 }
 
 // return the composition pi = pi1^-1 . pi2
-inline void compose_inv_perm(const perm pi1, const perm pi2, perm pi) {
-    for (byte i=0; i<N; i++)
+template<std::size_t N>
+inline void compose_inv_perm(const byte (&pi1)[N], const byte (&pi2)[N], byte (&pi)[N]) {
+    for (std::size_t i = 0; i < N; i++) {
         pi[pi1[i]] = pi2[i]; // non-standard, since we permute indices
+    }
 }
 
+template<std::size_t N>
 class Matrix {
+    static_assert(N > 0, "Matrix dimension must be > 0");
+    static_assert(N <= 64, "Matrix<N> supports N <= 64");
 
 public:
-    std::array<uint64_t,NR> _bits = {{ }}; // initalizes to 0
+    static constexpr byte NC = 64 / N;           // number of rows in one word
+    static constexpr byte NR = (N - 1) / NC + 1; // number of words needed
 
 public:
+    std::array<uint64_t, NR> _bits = {{ }}; // initializes to 0
 
     Matrix() = default; // zero matrix
 
     explicit Matrix(bool diag) { // create identity when diag=true
         if (!diag) return;
-        for (uint8_t i=0; i<N; i++)
-            set(i,i,true);
+        for (uint8_t i = 0; i < N; i++) {
+            set(i, i, true);
+        }
     }
 
     inline bool get(uint8_t i, uint8_t j) const {
         if constexpr (NR == 1) {
             return (_bits[0] >> (N * i + j)) & 1UL;
         } else {
-            div_t wordi = div(i,NC);
+            div_t wordi = div(i, NC);
             uint64_t res = _bits[wordi.quot] & (1UL << (N * wordi.rem + j));
             return (res ? true : false);
         }
@@ -82,7 +113,7 @@ public:
             else
                 _bits[0] &= ~mask;
         } else {
-            div_t wordi = div(i,NC);
+            div_t wordi = div(i, NC);
             uint64_t mask = (1UL << (N * wordi.rem + j));
             if (val)
                 _bits[wordi.quot] |= mask;
@@ -92,14 +123,14 @@ public:
     }
 
     bool operator==(const Matrix &other) const { // assume unused bits are 0
-        for (uint8_t i=NR-1; i<NR; i--) {
+        for (int i = static_cast<int>(NR) - 1; i >= 0; i--) {
             if (_bits[i] != other._bits[i]) return false;
         }
         return true;
     }
     
     bool operator<(const Matrix &other) const { // assume unused bits are 0
-        for (uint8_t i=NR-1; i<NR; i--) {
+        for (int i = static_cast<int>(NR) - 1; i >= 0; i--) {
             if (_bits[i] < other._bits[i]) return true;
             if (_bits[i] > other._bits[i]) return false;
         }
@@ -110,11 +141,11 @@ public:
     void print() const {
         std::string delimiter(N*2-1,'=');
         std::cerr << delimiter << std::endl;
-            for (uint8_t i=0; i<N; i++) {
-                for (uint8_t j=0; j<N; j++)
-                    fprintf(stderr,"%c ", (get(i,j) ? '1' : '0'));
-                fprintf(stderr,"\n");   
-            }
+        for (uint8_t i = 0; i < N; i++) {
+            for (uint8_t j = 0; j < N; j++)
+                fprintf(stderr, "%c ", (get(i, j) ? '1' : '0'));
+            fprintf(stderr, "\n");
+        }
         std::cerr << delimiter << std::endl;
     };
 
@@ -125,8 +156,8 @@ public:
             exit(-1); 
         }
         Matrix result;
-        for (u_int8_t i=0; i<N; i++)
-            for (u_int8_t j=0; j<N; j++) {
+        for (uint8_t i = 0; i < N; i++)
+            for (uint8_t j = 0; j < N; j++) {
                 char c=0;
                 do {
                     input.get(c);
@@ -151,7 +182,7 @@ public:
             uint64_t mask = (1UL << N) - 1;
             return (_bits[0] >> (N * i)) & mask;
         } else {
-            div_t wordi = div(i,NC);
+            div_t wordi = div(i, NC);
             uint64_t mask = (1UL << N) - 1; // single row of 1s
             return (this->_bits[wordi.quot] & (mask << (N*wordi.rem))) >> (N*wordi.rem); // select row i
         }
@@ -163,7 +194,7 @@ public:
         if constexpr (NR == 1) {
             result._bits[0] ^= (row_i << (N * j));
         } else {
-            div_t wordj = div(j,NC);
+            div_t wordj = div(j, NC);
             result._bits[wordj.quot] ^= (row_i << (N*wordj.rem));
         }
         return result;
@@ -175,12 +206,12 @@ public:
         return addrow2(addrow1(i),j);
     };
 
-    Matrix permute(const uint8_t pi[N]) const { // other[i][j] := this[pi[i]][pi[j]]
+    Matrix permute(const byte (&pi)[N]) const { // other[i][j] := this[pi[i]][pi[j]]
         if constexpr (NR == 1) {
             Matrix other;
             uint64_t y = 0;
-            for (uint8_t i = N - 1; i < N; i--)
-                for (uint8_t j = N - 1; j < N; j--) {
+            for (int i = static_cast<int>(N) - 1; i >= 0; i--)
+                for (int j = static_cast<int>(N) - 1; j >= 0; j--) {
                     y <<= 1;
                     y |= (_bits[0] >> (pi[i] * N + pi[j])) & 1UL;
                 }
@@ -197,12 +228,12 @@ public:
         }
     }
 
-    Matrix permute2(const uint8_t pi1[N], const uint8_t pi2[N]) const { // other[i][j] := this[pi1[i]][pi2[j]]
+    Matrix permute2(const byte (&pi1)[N], const byte (&pi2)[N]) const { // other[i][j] := this[pi1[i]][pi2[j]]
         if constexpr (NR == 1) {
             Matrix other;
             uint64_t y = 0;
-            for (uint8_t i = N - 1; i < N; i--)
-                for (uint8_t j = N - 1; j < N; j--) {
+            for (int i = static_cast<int>(N) - 1; i >= 0; i--)
+                for (int j = static_cast<int>(N) - 1; j >= 0; j--) {
                     y <<= 1;
                     y |= (_bits[0] >> (pi1[i] * N + pi2[j])) & 1UL;
                 }
@@ -223,7 +254,8 @@ public:
 
 #if SWAP==0
 // Test if index i is essential (interacts with another index)
-inline bool testEssential(const Matrix &x, byte i) {
+template<std::size_t N>
+inline bool testEssential(const Matrix<N> &x, byte i) {
     if (!(x.get(i,i)))
         return true;
     for (byte j=0; j<N; j++)
@@ -233,7 +265,8 @@ inline bool testEssential(const Matrix &x, byte i) {
 }
 
 // Count the number of essential indices
-inline byte countEssential(const Matrix &x) {
+template<std::size_t N>
+inline byte countEssential(const Matrix<N> &x) {
     byte ess=0;
     for (byte i=0; i<N; i++)
         if (testEssential(x,i)) ess++;
@@ -243,7 +276,8 @@ inline byte countEssential(const Matrix &x) {
 #else
 
 // Count the number of ones that are lonely in their row and column
-inline byte countEssential(const Matrix &x) {
+template<std::size_t N>
+inline byte countEssential(const Matrix<N> &x) {
     byte ess=0; // we count the inessential indices
     for (byte i=0; i<N; i++) {
         byte count=0, jj; // count number of ones and remember their column
@@ -262,6 +296,15 @@ inline byte countEssential(const Matrix &x) {
     return N-ess;
 }
 
+#endif
+
+#ifdef MATRIXN_COMPILE_N
+using MatrixDefault = Matrix<MATRIXN_COMPILE_N>;
+#endif
+
+#ifdef MATRIXN_RESTORE_N_MACRO
+#pragma pop_macro("N")
+#undef MATRIXN_RESTORE_N_MACRO
 #endif
 
 #endif

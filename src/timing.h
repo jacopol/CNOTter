@@ -14,10 +14,10 @@ uint64_t currentTime() {
     return duration_cast<seconds>(system_clock::now() - startTime).count();
 }
 
-void report(uint64_t level, uint64_t orbit) {
+void report(uint64_t level, uint64_t orbit, uint64_t deadend) {
     std::cerr   << std::setprecision(std::numeric_limits<double>::digits10)
                 << "(" << currentTime() << "s) ("
-                << level << " elts) (" << orbit << " orbits)" << std::endl;
+                << level << " elts) (" << orbit << " orbits) (" << deadend << " deadends)" << std::endl;
 }
 
 void lifeBeat(int worker, uint64_t level, uint64_t orbit) {

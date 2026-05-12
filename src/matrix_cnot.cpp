@@ -74,7 +74,7 @@ counter init_level(hashset levels[], matrix start) {
 
 // Process a single CNOT operation: add row i to row j
 // Returns true if a new canonical form was discovered
-inline void __attribute__((always_inline))
+inline bool __attribute__((always_inline))
 process_cnot(matrix x, uint64_t row_i, byte j,
              hashset &prev_level, hashset &curr_level, hashset &next_level,
              counter &orbit_sum, counter &matrix_count,
@@ -83,24 +83,31 @@ process_cnot(matrix x, uint64_t row_i, byte j,
     counter Stab = representative(y);
     
     // Check if we've seen this canonical form before
-    if (!prev_level.contains(y) && !curr_level.contains(y) && next_level.insert(y)) {
-        // New canonical form found - update counters
-        orbit_sum += compute_orbit_size(Stab);
-        matrix_count++;
-        
-        if constexpr (POLY == 1) {
-            if (2*(depth-1) <= N) {
-                byte ess = countEssential(y);
-                poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+    if (!prev_level.contains(y) && !curr_level.contains(y)) {
+        if (next_level.insert(y)) {
+            // New canonical form found - update counters
+            orbit_sum += compute_orbit_size(Stab);
+            matrix_count++;
+            
+            if constexpr (POLY == 1) {
+                if (2*(depth-1) <= N) {
+                    byte ess = countEssential(y);
+                    poly[depth-1][ess] += (fac[ess] * fac[N-ess]) / Stab;
+                }
             }
         }
+        return false;
+    }
+    else {
+        return true;
     }
 }
 
 // explore and count all successors of the current level
-counter next_level(counter &size, hashset levels[], uint32_t depth) { 
+counter next_level(counter &size, counter &deadends, hashset levels[], uint32_t depth) { 
     std::atomic<counter> level(0);
     std::atomic<counter> count(0);
+    std::atomic<counter> dead(0);
 
     // current and prev are accessed read-only
     // next is modified (extended) concurrently
@@ -113,6 +120,7 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
     const int max_threads = omp_get_max_threads();
     std::vector<PaddedCounter> thread_levels(max_threads, {0});
     std::vector<PaddedCounter> thread_counts(max_threads, {0});
+    std::vector<PaddedCounter> thread_dead(max_threads, {0});
 
     // Hoist loop-invariant references and computations
     hashset &prev_level = levels[depth-2];
@@ -124,7 +132,7 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             int tid = omp_get_thread_num();
             counter &orbit_sum = thread_levels[tid].value;
             counter &matrix_count = thread_counts[tid].value;
-            
+            bool is_deadend = true;
             // Generate all N(N-1) successor matrices by applying CNOT(i,j) operations
             for (byte i=0; i<N; i++) {
                 // Extract row i once for all j destinations
@@ -133,10 +141,14 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
                 
                 for (byte j=0; j<N; j++) {
                     if (i != j) {
-                        process_cnot(x, row_i, j, prev_level, curr_level, next_level,
+                        is_deadend &= process_cnot(x, row_i, j, prev_level, curr_level, next_level,
                                      orbit_sum, matrix_count, depth);
                     }
                 }
+            }
+            if (is_deadend) {
+                // pretty_matrix(x);
+                thread_dead[tid].value++;
             }
 #if BEAT>0
             size_t worker = omp_get_thread_num();
@@ -156,8 +168,10 @@ counter next_level(counter &size, hashset levels[], uint32_t depth) {
             level += thread_levels[i].value;
             count += thread_counts[i].value;
         }
+        dead += thread_dead[i].value;
     }
     size = count;
+    deadends = dead;
     return level;
 }
 
@@ -165,14 +179,15 @@ int generate_bfs(matrix start, matrix goal, byte limit, hashset bfs_levels[]) {
 
     // initialize Breadth-First Search
     byte depth = 1, tableSize = 3;
-    counter level, levels, orbit, orbits;
+    counter level, levels, orbit, orbits, deadend, deadends;
     orbit = orbits = 1;
+    deadend = deadends = 0;
 
     fprintf(stderr,"Depth 0 (2^3): "); fflush(stderr);
     levels = level = init_level(bfs_levels, start);
 
     while (orbit) {
-        report(level, orbit);
+        report(level, orbit, deadend);
         if (goal)
             { if (find_level(goal, bfs_levels[depth])) return -depth; }
         else 
@@ -183,8 +198,9 @@ int generate_bfs(matrix start, matrix goal, byte limit, hashset bfs_levels[]) {
         bfs_levels[depth] = hashset();
         bfs_levels[depth].init(tableSize);
         fprintf(stderr,"Depth %u (2^%u): ", depth-1, tableSize); fflush(stderr);
-        levels += level = next_level(orbit, bfs_levels, depth);
+        levels += level = next_level(orbit, deadend, bfs_levels, depth);
         orbits += orbit;
+        deadends += deadend;
     }
     depth--;
     fprintf(stderr,"--\n");
@@ -218,12 +234,12 @@ triple bidirectional(matrix start, matrix goal, byte limit, hashset bfs_fwd[], h
 
     // initialize Bidirectional fwd/bwd Search
     byte fdepth = 1, bdepth=1, tableSize;
-    counter level, forbit, borbit, levels, orbits;
-    forbit = borbit = 1; orbits = 2;
+    counter level, forbit, borbit, levels, orbits, deadends;
+    forbit = borbit = 1; orbits = 2; deadends = 0;
     levels = level = init_level(bfs_fwd, start);
-    fprintf(stderr,"Fwd Depth 0 (2^3): "); report(level, forbit);
+    fprintf(stderr,"Fwd Depth 0 (2^3): "); report(level, forbit, deadends);
     levels += level = init_level(bfs_bwd, goal);
-    fprintf(stderr,"Bwd Depth 0 (2^3): "); report(level, borbit);
+    fprintf(stderr,"Bwd Depth 0 (2^3): "); report(level, borbit, deadends);
     matrix m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
     if (m) return Triple(m, fdepth, bdepth);
 
@@ -235,9 +251,9 @@ triple bidirectional(matrix start, matrix goal, byte limit, hashset bfs_fwd[], h
             fprintf(stderr,"Fwd Depth %u (2^%u): ", fdepth-1, tableSize); fflush(stderr);
             bfs_fwd[fdepth] = hashset();
             bfs_fwd[fdepth].init(tableSize);
-            levels += level = next_level(forbit, bfs_fwd, fdepth);
+            levels += level = next_level(forbit, deadends, bfs_fwd, fdepth);
             orbits += forbit;
-            report(level, forbit);
+            report(level, forbit, deadends);
         }
         else {
             bdepth++;
@@ -247,9 +263,9 @@ triple bidirectional(matrix start, matrix goal, byte limit, hashset bfs_fwd[], h
             fprintf(stderr,"Bwd Depth %u (2^%u): ", bdepth-1, tableSize); fflush(stderr);
             bfs_bwd[bdepth] = hashset();
             bfs_bwd[bdepth].init(tableSize);
-            levels += level = next_level(borbit, bfs_bwd, bdepth);
+            levels += level = next_level(borbit, deadends, bfs_bwd, bdepth);
             orbits += borbit;
-            report(level, borbit);
+            report(level, borbit, deadends);
         }
         m = intersect(bfs_fwd[fdepth], bfs_bwd[bdepth]);
         if (m) return Triple(m, fdepth, bdepth);

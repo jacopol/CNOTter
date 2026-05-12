@@ -448,10 +448,6 @@ void print_configuration() {
 #endif
 }
 
-inline MatrixImpl compute_identity_matrix() {
-    return Trait::identity();
-}
-
 void run_bidirectional_search(const MatrixImpl& id, const MatrixImpl& goal, uint8_t limit) {
     triple result = bidirectional(id, goal, limit, bfs_fwd, bfs_bwd);
     MatrixImpl middle = result.first;
@@ -545,7 +541,7 @@ int main(int argc, char* argv[]) {
     intermediate.init(PairSize);
 #endif
 
-    MatrixImpl id = compute_identity_matrix();
+    MatrixImpl id = Trait::identity();
     if (opts.has_goal) {
         run_bidirectional_search(id, opts.goal, opts.limit);
     } else {
